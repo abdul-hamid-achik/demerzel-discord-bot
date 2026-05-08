@@ -34,7 +34,9 @@ export const slashCommands = [
         ),
     )
     .addSubcommand((sub) =>
-      sub.setName("show").setDescription("Show your current language preferences"),
+      sub
+        .setName("show")
+        .setDescription("Show your current language preferences"),
     ),
 
   new SlashCommandBuilder()
@@ -53,7 +55,9 @@ export const slashCommands = [
 
   new SlashCommandBuilder()
     .setName("translate-thread")
-    .setDescription("Create a translation thread for the latest message in this channel")
+    .setDescription(
+      "Create a translation thread for the latest message in this channel",
+    )
     .addStringOption((opt) =>
       opt
         .setName("languages")
@@ -66,6 +70,72 @@ export const slashCommands = [
     .setDescription("Show translation analytics for this server"),
 
   new SlashCommandBuilder()
+    .setName("archive-translations")
+    .setDescription(
+      "Archive translation threads in this channel (preserves history)",
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addBooleanOption((opt) =>
+      opt
+        .setName("force")
+        .setDescription(
+          "Also archive threads that have replies (default: only empty ones)",
+        )
+        .setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
+    .setName("reminder")
+    .setDescription("Schedule and manage reminders")
+    .addSubcommand((sub) =>
+      sub
+        .setName("create")
+        .setDescription("Schedule a one-time reminder")
+        .addStringOption((opt) =>
+          opt
+            .setName("when")
+            .setDescription("Example: in 2 hours, or 2026-05-09T18:00:00-06:00")
+            .setRequired(true),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("message")
+            .setDescription("What to send when the reminder fires")
+            .setRequired(true),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("delivery")
+            .setDescription("Where to send it")
+            .setRequired(false)
+            .addChoices(
+              { name: "Private DM", value: "dm" },
+              { name: "This channel", value: "channel" },
+            ),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("link")
+            .setDescription("Optional URL to include")
+            .setRequired(false),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("list").setDescription("List your pending reminders"),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("cancel")
+        .setDescription("Cancel one of your pending reminders")
+        .addStringOption((opt) =>
+          opt
+            .setName("id")
+            .setDescription("Reminder id or prefix from /reminder list")
+            .setRequired(true),
+        ),
+    ),
+
+  new SlashCommandBuilder()
     .setName("auto-translate")
     .setDescription("Configure automatic translation for this channel")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -76,14 +146,16 @@ export const slashCommands = [
         .addStringOption((opt) =>
           opt
             .setName("languages")
-            .setDescription("Comma-separated language codes (default: en,es,it,pt)")
+            .setDescription(
+              "Comma-separated language codes (default: en,es,it,pt)",
+            )
             .setRequired(false),
         )
         .addIntegerOption((opt) =>
           opt
             .setName("cleanup_minutes")
             .setDescription(
-              "Delete translation threads after N min if no replies (0 = never; default 30)",
+              "Archive translation threads after N min if no replies (0 = never; default 5)",
             )
             .setMinValue(0)
             .setMaxValue(10080)
@@ -91,10 +163,14 @@ export const slashCommands = [
         ),
     )
     .addSubcommand((sub) =>
-      sub.setName("disable").setDescription("Stop auto-translating in this channel"),
+      sub
+        .setName("disable")
+        .setDescription("Stop auto-translating in this channel"),
     )
     .addSubcommand((sub) =>
-      sub.setName("status").setDescription("Show auto-translate config for this channel"),
+      sub
+        .setName("status")
+        .setDescription("Show auto-translate config for this channel"),
     ),
 ].map((c) => c.toJSON());
 

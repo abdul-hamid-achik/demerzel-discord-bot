@@ -10,6 +10,7 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   DEEPL_API_KEY: z.string().optional(),
   GOOGLE_TRANSLATE_API_KEY: z.string().optional(),
+  TAVILY_API_KEY: z.string().optional(),
   REDIS_URL: z.string().optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("production"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),

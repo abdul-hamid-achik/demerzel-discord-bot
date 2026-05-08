@@ -17,6 +17,8 @@ export interface TranslateResult {
 }
 
 export class TranslationOrchestrator {
+  private inFlight = new Map<string, Promise<TranslateResult>>();
+
   async translate(req: TranslateRequest): Promise<TranslateResult> {
     const text = req.text.trim();
     if (!text) {
@@ -53,28 +55,61 @@ export class TranslationOrchestrator {
       };
     }
 
+    const inFlightKey = `${hash}:${sourceLanguage}:${req.targetLanguage}`;
+    const existing = this.inFlight.get(inFlightKey);
+    if (existing) return existing;
+
+    const work = this.translateUncached({
+      text,
+      hash,
+      sourceLanguage,
+      targetLanguage: req.targetLanguage,
+    }).finally(() => {
+      this.inFlight.delete(inFlightKey);
+    });
+    this.inFlight.set(inFlightKey, work);
+    return work;
+  }
+
+  private async translateUncached(args: {
+    text: string;
+    hash: string;
+    sourceLanguage: string;
+    targetLanguage: string;
+  }): Promise<TranslateResult> {
     const provider = getProvider();
     const result = await provider.translate({
-      text,
-      sourceLanguage: sourceLanguage === "und" ? undefined : sourceLanguage,
-      targetLanguage: req.targetLanguage,
+      text: args.text,
+      sourceLanguage:
+        args.sourceLanguage === "und" ? undefined : args.sourceLanguage,
+      targetLanguage: args.targetLanguage,
     });
 
     const finalSource =
-      result.detectedSourceLanguage?.toLowerCase() ?? sourceLanguage;
+      result.detectedSourceLanguage?.toLowerCase() ?? args.sourceLanguage;
 
     await writeCache({
-      originalHash: hash,
+      originalHash: args.hash,
       sourceLanguage: finalSource,
-      targetLanguage: req.targetLanguage,
+      targetLanguage: args.targetLanguage,
       translatedText: result.translatedText,
       provider: result.provider,
     });
 
+    if (args.sourceLanguage !== finalSource) {
+      await writeCache({
+        originalHash: args.hash,
+        sourceLanguage: args.sourceLanguage,
+        targetLanguage: args.targetLanguage,
+        translatedText: result.translatedText,
+        provider: result.provider,
+      });
+    }
+
     return {
       translatedText: result.translatedText,
       sourceLanguage: finalSource,
-      targetLanguage: req.targetLanguage,
+      targetLanguage: args.targetLanguage,
       provider: result.provider,
       cached: false,
     };

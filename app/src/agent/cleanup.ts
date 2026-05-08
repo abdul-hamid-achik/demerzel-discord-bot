@@ -25,11 +25,13 @@ export function shouldCleanupThread(
 
 /**
  * Resolve the effective cleanup minutes for a channel:
- *   null/undefined → app default (30)
+ *   null/undefined → app default
  *   0              → never clean up
  *   N > 0          → clean up after N minutes
  */
-export function effectiveCleanupMinutes(value: number | null | undefined): number {
+export function effectiveCleanupMinutes(
+  value: number | null | undefined,
+): number {
   if (value === null || value === undefined) return DEFAULT_CLEANUP_MINUTES;
   if (value < 0) return 0;
   return Math.floor(value);

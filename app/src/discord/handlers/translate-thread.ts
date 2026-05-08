@@ -1,16 +1,14 @@
-import type { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
+import type {
+  ChatInputCommandInteraction,
+  MessageContextMenuCommandInteraction,
+} from "discord.js";
 import { ChannelType, MessageFlags } from "discord.js";
 import { agent } from "../../agent/agent.js";
-
-const DEFAULT_LANGUAGES = ["en", "es", "it", "pt"];
-
-function parseLanguages(raw: string | null): string[] {
-  if (!raw) return DEFAULT_LANGUAGES;
-  return raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
+import {
+  DEFAULT_TARGET_LANGUAGES,
+  parseLanguages,
+} from "../../translation/lang-util.js";
+import { NO_MENTIONS } from "../messages.js";
 
 export async function handleTranslateThreadSlash(
   interaction: ChatInputCommandInteraction,
@@ -23,6 +21,7 @@ export async function handleTranslateThreadSlash(
     await interaction.reply({
       content: "This command only works in standard text channels.",
       flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
     });
     return;
   }
@@ -32,19 +31,31 @@ export async function handleTranslateThreadSlash(
   const recent = await interaction.channel.messages.fetch({ limit: 1 });
   const message = recent.first();
   if (!message) {
-    await interaction.editReply("No recent message found in this channel.");
+    await interaction.editReply({
+      content: "No recent message found in this channel.",
+      allowedMentions: NO_MENTIONS,
+    });
     return;
   }
 
   const languages = parseLanguages(interaction.options.getString("languages"));
   await agent.createTranslationThread(message, languages);
-  await interaction.editReply(`Translation thread created on the latest message.`);
+  await interaction.editReply({
+    content: "Translation thread created on the latest message.",
+    allowedMentions: NO_MENTIONS,
+  });
 }
 
 export async function handleTranslateThreadContext(
   interaction: MessageContextMenuCommandInteraction,
 ): Promise<void> {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  await agent.createTranslationThread(interaction.targetMessage, DEFAULT_LANGUAGES);
-  await interaction.editReply("Translation thread created.");
+  await agent.createTranslationThread(
+    interaction.targetMessage,
+    DEFAULT_TARGET_LANGUAGES,
+  );
+  await interaction.editReply({
+    content: "Translation thread created.",
+    allowedMentions: NO_MENTIONS,
+  });
 }

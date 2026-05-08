@@ -1,14 +1,18 @@
 import { ChannelType, type AnyThreadChannel, type Message } from "discord.js";
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { messageIndex } from "../db/schema.js";
+import { messageIndex, type NewTranslationEvent } from "../db/schema.js";
 import { analytics } from "../analytics/engine.js";
 import { channels } from "../channels/engine.js";
 import { preferences } from "../preferences/engine.js";
 import { hashText } from "../translation/cache.js";
 import { detectLanguage } from "../translation/language-detect.js";
-import { translator, type TranslateResult } from "../translation/orchestrator.js";
+import {
+  translator,
+  type TranslateResult,
+} from "../translation/orchestrator.js";
 import { logger } from "../logger.js";
+import { NO_MENTIONS, sendDiscordChunks } from "../discord/messages.js";
 import { effectiveCleanupMinutes, shouldCleanupThread } from "./cleanup.js";
 import { shouldAutoTranslate } from "./filters.js";
 
@@ -43,6 +47,22 @@ export interface IndexedMessage {
 export class BotAgent {
   flag(language: string): string {
     return FLAGS[language] ?? "🌐";
+  }
+
+  private recordAnalytics(
+    event: Omit<NewTranslationEvent, "id" | "createdAt">,
+  ): void {
+    void analytics.record(event).catch((err) => {
+      logger.warn(
+        {
+          err,
+          eventType: event.eventType,
+          channelId: event.channelId,
+          discordMessageId: event.discordMessageId,
+        },
+        "analytics record failed",
+      );
+    });
   }
 
   async indexMessage(message: Message): Promise<IndexedMessage> {
@@ -84,7 +104,8 @@ export class BotAgent {
     sourceLanguage?: string;
   }): Promise<TranslateResult> {
     const target =
-      args.targetLanguage ?? (await preferences.getPrimaryLanguage(args.requesterId));
+      args.targetLanguage ??
+      (await preferences.getPrimaryLanguage(args.requesterId));
 
     const result = await translator.translate({
       text: args.text,
@@ -92,7 +113,7 @@ export class BotAgent {
       sourceLanguage: args.sourceLanguage,
     });
 
-    await analytics.record({
+    this.recordAnalytics({
       discordUserId: args.requesterId,
       discordMessageId: args.discordMessageId ?? null,
       channelId: args.channelId,
@@ -109,16 +130,24 @@ export class BotAgent {
     languages: string[],
   ): Promise<void> {
     if (!message.channel.isTextBased() || !("threads" in message.channel)) {
-      logger.warn({ channelId: message.channelId }, "channel does not support threads");
+      logger.warn(
+        { channelId: message.channelId },
+        "channel does not support threads",
+      );
       return;
     }
     if (message.hasThread) {
-      logger.info({ messageId: message.id }, "translation thread skipped: already has thread");
+      logger.info(
+        { messageId: message.id },
+        "translation thread skipped: already has thread",
+      );
       return;
     }
 
     const indexed = await this.indexMessage(message);
-    const targets = languages.filter((lang) => lang && lang !== indexed.sourceLanguage);
+    const targets = languages.filter(
+      (lang) => lang && lang !== indexed.sourceLanguage,
+    );
 
     const results = await Promise.allSettled(
       targets.map((lang) =>
@@ -148,7 +177,7 @@ export class BotAgent {
       }
       const result = r.value;
       lines.push(`${this.flag(lang)} ${result.translatedText}`);
-      await analytics.record({
+      this.recordAnalytics({
         discordUserId: message.author.id,
         discordMessageId: message.id,
         channelId: message.channelId,
@@ -159,10 +188,13 @@ export class BotAgent {
     }
 
     if (lines.length === 0) {
-      await thread.send("_No additional languages to translate to._");
+      await thread.send({
+        content: "_No additional languages to translate to._",
+        allowedMentions: NO_MENTIONS,
+      });
       return;
     }
-    await thread.send(lines.join("\n"));
+    await sendDiscordChunks(thread, lines.join("\n"));
   }
 
   /**
@@ -204,19 +236,33 @@ export class BotAgent {
     }
 
     if (message.hasThread) {
-      logger.debug({ ...ctx, skip: "already-has-thread" }, "auto-translate skipped");
+      logger.debug(
+        { ...ctx, skip: "already-has-thread" },
+        "auto-translate skipped",
+      );
       return;
     }
 
-    logger.info({ ...ctx, targets: setting.targetLanguages }, "auto-translating");
+    logger.info(
+      { ...ctx, targets: setting.targetLanguages },
+      "auto-translating",
+    );
 
     const indexed = await this.indexMessage(message);
     const sourceLang = indexed.sourceLanguage;
 
-    const targets = setting.targetLanguages.filter(
+    const filtered = setting.targetLanguages.filter(
       (lang) => lang && lang !== sourceLang,
     );
-    if (targets.length === 0) return;
+    if (filtered.length === 0) return;
+
+    // Reorder so languages preferred by recently-active authors in this
+    // channel come first. Each user's primary language ends up nearest the
+    // top — without dropping any of the configured targets.
+    const targets = await preferences.rankByChannelActivity(
+      message.channelId,
+      filtered,
+    );
 
     const results = await Promise.allSettled(
       targets.map((lang) =>
@@ -233,13 +279,16 @@ export class BotAgent {
       const lang = targets[i]!;
       const r = results[i]!;
       if (r.status === "rejected") {
-        logger.error({ err: r.reason, messageId: message.id, lang }, "auto-translate failed");
+        logger.error(
+          { err: r.reason, messageId: message.id, lang },
+          "auto-translate failed",
+        );
         continue;
       }
       const result = r.value;
       if (!result.translatedText.trim()) continue;
       lines.push(`${this.flag(lang)} ${result.translatedText}`);
-      await analytics.record({
+      this.recordAnalytics({
         discordUserId: message.author.id,
         discordMessageId: message.id,
         channelId: message.channelId,
@@ -256,25 +305,17 @@ export class BotAgent {
 
     try {
       const thread = await message.startThread({
-        name: `${this.flag(sourceLang)} → ${targets.map((t) => this.flag(t)).join(" ")}`.slice(0, 90),
+        name: `${this.flag(sourceLang)} → ${targets.map((t) => this.flag(t)).join(" ")}`.slice(
+          0,
+          90,
+        ),
         autoArchiveDuration: 60,
       });
-      // Discord caps message length at 2000; chunk if needed.
-      const body = lines.join("\n");
-      if (body.length <= 2000) {
-        await thread.send(body);
-      } else {
-        let buf = "";
-        for (const line of lines) {
-          if (buf.length + line.length + 1 > 1900) {
-            await thread.send(buf);
-            buf = "";
-          }
-          buf += (buf ? "\n" : "") + line;
-        }
-        if (buf) await thread.send(buf);
-      }
-      logger.info({ ...ctx, threadId: thread.id, lines: lines.length }, "auto-translate thread posted");
+      await sendDiscordChunks(thread, lines.join("\n"));
+      logger.info(
+        { ...ctx, threadId: thread.id, lines: lines.length },
+        "auto-translate thread posted",
+      );
       this.scheduleThreadCleanup(thread, setting.cleanupMinutes);
     } catch (err) {
       logger.error({ err, ...ctx }, "thread creation failed");
@@ -282,10 +323,12 @@ export class BotAgent {
   }
 
   /**
-   * Best-effort: after `cleanupMinutes`, delete the translation thread if no
-   * humans (or other bots) have replied. In-memory timer; lost on restart,
-   * which is acceptable since stale threads will eventually be re-swept by
-   * `sweepStaleThreads` whenever a new message lands in the channel.
+   * Best-effort: after `cleanupMinutes`, archive the translation thread if no
+   * humans (or other bots) have replied. Archiving (vs deleting) hides the
+   * thread from the channel sidebar but preserves history. In-memory timer;
+   * lost on restart, which is acceptable since stale threads will eventually
+   * be re-swept by `sweepStaleThreads` whenever a new message lands in the
+   * channel.
    */
   private scheduleThreadCleanup(
     thread: AnyThreadChannel,
@@ -299,35 +342,87 @@ export class BotAgent {
     if (!ourBotId) return;
 
     setTimeout(() => {
-      void this.maybeDeleteThread(thread, ourBotId);
+      void this.maybeArchiveThread(thread, ourBotId);
     }, ms).unref?.();
   }
 
-  private async maybeDeleteThread(
+  private async maybeArchiveThread(
     thread: AnyThreadChannel,
     ourBotId: string,
-  ): Promise<void> {
+    options: { force?: boolean; reason?: string } = {},
+  ): Promise<boolean> {
     try {
-      // Re-fetch in case it was already deleted/archived
       const fresh = await thread.fetch().catch(() => null);
-      if (!fresh) return;
+      if (!fresh) return false;
+      if (fresh.archived) return false;
 
-      const messages = await fresh.messages.fetch({ limit: 50 });
-      const authors = messages.map((m) => ({ bot: m.author.bot, id: m.author.id }));
-
-      if (!shouldCleanupThread(authors, ourBotId)) {
-        logger.debug(
-          { threadId: fresh.id, authors: authors.length },
-          "translation thread kept: human replies present",
-        );
-        return;
+      if (!options.force) {
+        const messages = await fresh.messages.fetch({ limit: 50 });
+        const authors = messages.map((m) => ({
+          bot: m.author.bot,
+          id: m.author.id,
+        }));
+        if (!shouldCleanupThread(authors, ourBotId)) {
+          logger.debug(
+            { threadId: fresh.id, authors: authors.length },
+            "translation thread kept: human replies present",
+          );
+          return false;
+        }
       }
 
-      await fresh.delete("Auto-cleanup: translation thread had no replies");
-      logger.info({ threadId: fresh.id }, "translation thread auto-deleted");
+      await fresh.setArchived(
+        true,
+        options.reason ?? "Auto-cleanup: translation thread had no replies",
+      );
+      logger.info(
+        { threadId: fresh.id, force: !!options.force },
+        "translation thread archived",
+      );
+      return true;
     } catch (err) {
-      logger.warn({ err, threadId: thread.id }, "thread cleanup failed");
+      logger.warn({ err, threadId: thread.id }, "thread archive failed");
+      return false;
     }
+  }
+
+  /**
+   * Archive all active bot-owned translation threads in a given channel.
+   * `force=false` (default) preserves threads that have human/other-bot
+   * replies. Returns counts so callers can report back to the user.
+   */
+  async archiveBotThreadsInChannel(
+    channel: Message["channel"],
+    options: { force?: boolean } = {},
+  ): Promise<{ archived: number; kept: number }> {
+    const ourBotId = channel.client.user?.id;
+    if (!ourBotId) return { archived: 0, kept: 0 };
+    if (
+      channel.type !== ChannelType.GuildText &&
+      channel.type !== ChannelType.GuildAnnouncement
+    ) {
+      return { archived: 0, kept: 0 };
+    }
+
+    let archived = 0;
+    let kept = 0;
+    try {
+      const active = await channel.threads.fetchActive();
+      for (const [, thread] of active.threads) {
+        if (thread.ownerId !== ourBotId) continue;
+        const ok = await this.maybeArchiveThread(thread, ourBotId, {
+          force: options.force,
+          reason: options.force
+            ? "Manual archive via /archive-translations"
+            : "Manual archive (kept threads with replies)",
+        });
+        if (ok) archived++;
+        else kept++;
+      }
+    } catch (err) {
+      logger.warn({ err, channelId: channel.id }, "archive-bot-threads failed");
+    }
+    return { archived, kept };
   }
 
   /**
@@ -348,7 +443,8 @@ export class BotAgent {
     if (
       channel.type !== ChannelType.GuildText &&
       channel.type !== ChannelType.GuildAnnouncement
-    ) return;
+    )
+      return;
 
     const cutoffMs = minutes * 60_000;
     const now = Date.now();
@@ -359,7 +455,7 @@ export class BotAgent {
         if (thread.ownerId !== ourBotId) continue;
         const created = thread.createdTimestamp ?? 0;
         if (now - created < cutoffMs) continue;
-        await this.maybeDeleteThread(thread, ourBotId);
+        await this.maybeArchiveThread(thread, ourBotId);
       }
     } catch (err) {
       logger.debug({ err }, "sweep stale threads failed");

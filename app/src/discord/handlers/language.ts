@@ -2,6 +2,7 @@ import type { ChatInputCommandInteraction } from "discord.js";
 import { MessageFlags } from "discord.js";
 import { analytics } from "../../analytics/engine.js";
 import { preferences } from "../../preferences/engine.js";
+import { NO_MENTIONS } from "../messages.js";
 
 export async function handleLanguage(
   interaction: ChatInputCommandInteraction,
@@ -20,6 +21,7 @@ export async function handleLanguage(
     await interaction.reply({
       content: `Primary language set to **${code}**.`,
       flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
     });
     return;
   }
@@ -30,6 +32,7 @@ export async function handleLanguage(
       await interaction.reply({
         content: "No preferences set yet. Try `/language set`.",
         flags: MessageFlags.Ephemeral,
+        allowedMentions: NO_MENTIONS,
       });
       return;
     }
@@ -41,6 +44,7 @@ export async function handleLanguage(
     await interaction.reply({
       content: lines.join("\n"),
       flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
     });
     return;
   }

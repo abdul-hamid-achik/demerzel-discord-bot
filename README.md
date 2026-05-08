@@ -118,6 +118,28 @@ task compose:logs
 
 Run `task` (or `task --list`) to see all available commands.
 
+## Reminders and Demerzel
+
+The bot can schedule one-time reminders backed by Postgres, so reminders
+survive bot restarts. Use slash commands directly:
+
+```text
+/reminder create when:"in 2 hours" message:"Check the event signup" delivery:"Private DM"
+/reminder create when:"2026-05-09T18:00:00-06:00" message:"Fleet event starts" delivery:"This channel"
+/reminder list
+/reminder cancel id:"abcd1234"
+```
+
+When `TAVILY_API_KEY` is set, Demerzel can also search live web results before
+scheduling. Example:
+
+```text
+@Demerzel search when the next Foundation Galactic Empire event is, then remind this channel one hour before with the link.
+```
+
+Channel reminders are posted without allowed mentions, so generated text cannot
+accidentally ping roles, users, or `@everyone`.
+
 ## Swapping translation provider
 
 Set `TRANSLATION_PROVIDER` to `openai`, `deepl`, or `google`. Each provider is
@@ -130,6 +152,10 @@ new one means implementing `translate()` and registering it in the factory.
   through ephemeral replies, DMs (reaction trigger), or threads.
 - Translation cache key: `(sha256(text), source_lang, target_lang)`. Cache hits
   are still recorded as analytics events with `event_type='cache_hit'`.
+- The bot only indexes messages when a feature needs it, instead of running
+  language detection for every message in every channel.
+- Reminders are claimed from the database before delivery, which avoids obvious
+  duplicate sends if more than one bot process is running.
 - The `HermesAgent` class is the orchestration seam — Discord handlers call it,
   it owns the translation/cache/analytics flow. Future work (Hermes Agent
   framework, web overlay, summaries) plugs in here without touching handlers.

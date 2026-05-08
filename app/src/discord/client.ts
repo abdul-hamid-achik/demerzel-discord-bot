@@ -12,8 +12,10 @@ import { config } from "../config.js";
 import { agent } from "../agent/agent.js";
 import { logger } from "../logger.js";
 import { preferences } from "../preferences/engine.js";
+import { handleArchiveTranslations } from "./handlers/archive.js";
 import { handleAutoTranslate } from "./handlers/auto-translate.js";
 import { handleLanguage } from "./handlers/language.js";
+import { handleMention, isAddressedToBot } from "./handlers/mention.js";
 import { handleStats } from "./handlers/stats.js";
 import {
   handleTranslateContext,
@@ -23,9 +25,14 @@ import {
   handleTranslateThreadContext,
   handleTranslateThreadSlash,
 } from "./handlers/translate-thread.js";
+import { handleReminder } from "./handlers/reminder.js";
+import { NO_MENTIONS } from "./messages.js";
+import { startReminderScheduler } from "../reminders/scheduler.js";
 
 function channelName(channel: Channel): string {
-  return "name" in channel && typeof channel.name === "string" ? channel.name : "channel";
+  return "name" in channel && typeof channel.name === "string"
+    ? channel.name
+    : "channel";
 }
 
 export function buildClient(): Client {
@@ -41,6 +48,7 @@ export function buildClient(): Client {
 
   client.once(Events.ClientReady, (c) => {
     logger.info({ user: c.user.tag }, "discord client ready");
+    startReminderScheduler(client);
   });
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
@@ -57,6 +65,10 @@ export function buildClient(): Client {
             return await handleStats(interaction);
           case "auto-translate":
             return await handleAutoTranslate(interaction);
+          case "archive-translations":
+            return await handleArchiveTranslations(interaction);
+          case "reminder":
+            return await handleReminder(interaction);
         }
       }
       if (interaction.isMessageContextMenuCommand()) {
@@ -70,9 +82,22 @@ export function buildClient(): Client {
     } catch (err) {
       logger.error({ err }, "interaction handler failed");
       if (interaction.isRepliable() && !interaction.replied) {
-        await interaction
-          .reply({ content: "Something went wrong.", flags: MessageFlags.Ephemeral })
-          .catch(() => undefined);
+        if (interaction.deferred) {
+          await interaction
+            .editReply({
+              content: "Something went wrong.",
+              allowedMentions: NO_MENTIONS,
+            })
+            .catch(() => undefined);
+        } else {
+          await interaction
+            .reply({
+              content: "Something went wrong.",
+              flags: MessageFlags.Ephemeral,
+              allowedMentions: NO_MENTIONS,
+            })
+            .catch(() => undefined);
+        }
       }
     }
   });
@@ -99,17 +124,18 @@ export function buildClient(): Client {
       });
 
       const dm = await user.createDM();
-      await dm.send(
-        `${agent.flag(result.targetLanguage)} ${result.translatedText}\n_from #${channelName(message.channel)}_`,
-      );
+      await dm.send({
+        content: `${agent.flag(result.targetLanguage)} ${result.translatedText}\n_from #${channelName(message.channel)}_`,
+        allowedMentions: NO_MENTIONS,
+      });
     } catch (err) {
       logger.error({ err }, "reaction handler failed");
     }
   });
 
-  // Indexes every user message (cheap, lets future on-demand translations hit
-  // cache) and — in channels that opted in via /auto-translate — posts a
-  // translation thread under the message.
+  // Handles direct bot mentions, then lets opted-in channels create translation
+  // threads. Message indexing now happens inside the features that need it so
+  // quiet channels don't pay DB/language-detection cost on every message.
   client.on(Events.MessageCreate, async (message: Message) => {
     try {
       if (message.author.bot) return;
@@ -126,14 +152,25 @@ export function buildClient(): Client {
         "messageCreate received",
       );
       if (!message.content) return;
-      await agent.indexMessage(message);
+
+      // If the user is talking *to* the bot, route to the AI chat handler and
+      // skip auto-translate — we don't want a translation thread under a
+      // direct question to Demerzel.
+      if (await isAddressedToBot(message)) {
+        await handleMention(message);
+        return;
+      }
+
       // Run sweep + auto-translate in parallel; sweep failures don't block translation
       await Promise.allSettled([
         agent.sweepStaleThreads(message),
         agent.autoTranslateMessage(message),
       ]);
     } catch (err) {
-      logger.error({ err, messageId: message.id }, "messageCreate handler failed");
+      logger.error(
+        { err, messageId: message.id },
+        "messageCreate handler failed",
+      );
     }
   });
 

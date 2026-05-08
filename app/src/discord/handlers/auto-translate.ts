@@ -3,6 +3,7 @@ import { MessageFlags } from "discord.js";
 import { effectiveCleanupMinutes } from "../../agent/cleanup.js";
 import { channels } from "../../channels/engine.js";
 import { parseLanguages } from "../../translation/lang-util.js";
+import { NO_MENTIONS } from "../messages.js";
 
 export async function handleAutoTranslate(
   interaction: ChatInputCommandInteraction,
@@ -11,6 +12,7 @@ export async function handleAutoTranslate(
     await interaction.reply({
       content: "This command only works in servers.",
       flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
     });
     return;
   }
@@ -29,8 +31,8 @@ export async function handleAutoTranslate(
     const effective = effectiveCleanupMinutes(cleanupOpt);
     const cleanupLine =
       effective === 0
-        ? "Threads are kept forever (`cleanup_minutes:0`)."
-        : `Threads with no replies are deleted after **${effective} min**.`;
+        ? "Threads are kept active forever (`cleanup_minutes:0`)."
+        : `Threads with no replies are archived after **${effective} min** (history preserved).`;
     await interaction.reply({
       content: [
         `Auto-translate **enabled** in this channel.`,
@@ -40,6 +42,7 @@ export async function handleAutoTranslate(
         `Every message gets a translation thread; threads with real replies are kept.`,
       ].join("\n"),
       flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
     });
     return;
   }
@@ -49,6 +52,7 @@ export async function handleAutoTranslate(
     await interaction.reply({
       content: "Auto-translate **disabled** in this channel.",
       flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
     });
     return;
   }
@@ -59,14 +63,15 @@ export async function handleAutoTranslate(
       await interaction.reply({
         content: "Auto-translate is **off** in this channel.",
         flags: MessageFlags.Ephemeral,
+        allowedMentions: NO_MENTIONS,
       });
       return;
     }
     const effective = effectiveCleanupMinutes(setting.cleanupMinutes);
     const cleanupLine =
       effective === 0
-        ? "Cleanup: **off** (threads are kept forever)"
-        : `Cleanup: threads without replies deleted after **${effective} min**`;
+        ? "Cleanup: **off** (threads stay active forever)"
+        : `Cleanup: threads without replies archived after **${effective} min**`;
     await interaction.reply({
       content: [
         `Auto-translate is **on** in this channel.`,
@@ -74,6 +79,7 @@ export async function handleAutoTranslate(
         cleanupLine,
       ].join("\n"),
       flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
     });
     return;
   }

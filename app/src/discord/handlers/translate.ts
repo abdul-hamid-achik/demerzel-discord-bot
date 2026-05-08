@@ -1,7 +1,30 @@
-import type { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
+import type {
+  ChatInputCommandInteraction,
+  MessageContextMenuCommandInteraction,
+} from "discord.js";
 import { MessageFlags } from "discord.js";
 import { agent } from "../../agent/agent.js";
+import { chunkDiscordText, NO_MENTIONS } from "../messages.js";
 
+async function editEphemeralTranslationReply(
+  interaction:
+    | ChatInputCommandInteraction
+    | MessageContextMenuCommandInteraction,
+  content: string,
+): Promise<void> {
+  const [first, ...rest] = chunkDiscordText(content);
+  await interaction.editReply({
+    content: first ?? "",
+    allowedMentions: NO_MENTIONS,
+  });
+  for (const chunk of rest) {
+    await interaction.followUp({
+      content: chunk,
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
+    });
+  }
+}
 
 export async function handleTranslateSlash(
   interaction: ChatInputCommandInteraction,
@@ -17,12 +40,13 @@ export async function handleTranslateSlash(
     targetLanguage: target,
   });
 
-  await interaction.editReply({
-    content: [
+  await editEphemeralTranslationReply(
+    interaction,
+    [
       `${agent.flag(result.targetLanguage)} ${result.translatedText}`,
       `_${result.sourceLanguage} → ${result.targetLanguage} · ${result.provider}${result.cached ? " · cached" : ""}_`,
     ].join("\n"),
-  });
+  );
 }
 
 export async function handleTranslateContext(
@@ -33,6 +57,7 @@ export async function handleTranslateContext(
     await interaction.reply({
       content: "Nothing to translate (message has no text content).",
       flags: MessageFlags.Ephemeral,
+      allowedMentions: NO_MENTIONS,
     });
     return;
   }
@@ -45,10 +70,11 @@ export async function handleTranslateContext(
     discordMessageId: interaction.targetMessage.id,
   });
 
-  await interaction.editReply({
-    content: [
+  await editEphemeralTranslationReply(
+    interaction,
+    [
       `${agent.flag(result.targetLanguage)} ${result.translatedText}`,
       `_${result.sourceLanguage} → ${result.targetLanguage} · ${result.provider}${result.cached ? " · cached" : ""}_`,
     ].join("\n"),
-  });
+  );
 }
