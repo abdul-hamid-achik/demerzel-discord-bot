@@ -7,6 +7,9 @@ interface OpenAIProviderOptions {
   model?: string;
 }
 
+const OPENAI_REQUEST_TIMEOUT_MS = 30_000;
+const OPENAI_MAX_RETRIES = 1;
+
 export class OpenAIProvider implements TranslationProvider {
   readonly name = "openai";
   private client: OpenAI;
@@ -17,7 +20,12 @@ export class OpenAIProvider implements TranslationProvider {
       throw new Error("OPENAI_API_KEY is required when TRANSLATION_PROVIDER=openai");
     }
     this.client =
-      options.client ?? new OpenAI({ apiKey: config.OPENAI_API_KEY });
+      options.client ??
+      new OpenAI({
+        apiKey: config.OPENAI_API_KEY,
+        timeout: OPENAI_REQUEST_TIMEOUT_MS,
+        maxRetries: OPENAI_MAX_RETRIES,
+      });
     this.model = options.model ?? config.OPENAI_TRANSLATION_MODEL;
   }
 

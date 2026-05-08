@@ -188,13 +188,25 @@ export class BotAgent {
     }
 
     if (lines.length === 0) {
-      await thread.send({
-        content: "_No additional languages to translate to._",
-        allowedMentions: NO_MENTIONS,
-      });
+      try {
+        await thread.send({
+          content: "_No additional languages to translate to._",
+          allowedMentions: NO_MENTIONS,
+        });
+      } catch (err) {
+        logger.error(
+          { err, messageId: message.id, channelId: message.channelId },
+          "translation-thread empty notice send failed",
+        );
+        throw err;
+      }
       return;
     }
-    await sendDiscordChunks(thread, lines.join("\n"));
+    await sendDiscordChunks(thread, lines.join("\n"), {
+      operation: "translation-thread",
+      messageId: message.id,
+      channelId: message.channelId,
+    });
   }
 
   /**
@@ -311,14 +323,18 @@ export class BotAgent {
         ),
         autoArchiveDuration: 60,
       });
-      await sendDiscordChunks(thread, lines.join("\n"));
+      await sendDiscordChunks(thread, lines.join("\n"), {
+        operation: "auto-translate",
+        messageId: message.id,
+        channelId: message.channelId,
+      });
       logger.info(
         { ...ctx, threadId: thread.id, lines: lines.length },
         "auto-translate thread posted",
       );
       this.scheduleThreadCleanup(thread, setting.cleanupMinutes);
     } catch (err) {
-      logger.error({ err, ...ctx }, "thread creation failed");
+      logger.error({ err, ...ctx }, "auto-translate thread post failed");
     }
   }
 

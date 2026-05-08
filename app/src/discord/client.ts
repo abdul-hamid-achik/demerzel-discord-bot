@@ -4,6 +4,7 @@ import {
   GatewayIntentBits,
   MessageFlags,
   Partials,
+  RESTEvents,
   type Channel,
   type Interaction,
   type Message,
@@ -26,7 +27,7 @@ import {
   handleTranslateThreadSlash,
 } from "./handlers/translate-thread.js";
 import { handleReminder } from "./handlers/reminder.js";
-import { NO_MENTIONS } from "./messages.js";
+import { discordErrorDetails, NO_MENTIONS } from "./messages.js";
 import { startReminderScheduler } from "../reminders/scheduler.js";
 
 function channelName(channel: Channel): string {
@@ -49,6 +50,62 @@ export function buildClient(): Client {
   client.once(Events.ClientReady, (c) => {
     logger.info({ user: c.user.tag }, "discord client ready");
     startReminderScheduler(client);
+  });
+
+  client.on(Events.Error, (err) => {
+    logger.error(
+      { err, discord: discordErrorDetails(err) },
+      "discord client error",
+    );
+  });
+
+  client.on(Events.ShardError, (err, shardId) => {
+    logger.error(
+      { err, discord: discordErrorDetails(err), shardId },
+      "discord shard error",
+    );
+  });
+
+  client.on(Events.Warn, (warning) => {
+    logger.warn({ warning }, "discord client warning");
+  });
+
+  client.rest.on(RESTEvents.RateLimited, (data) => {
+    logger.warn(
+      {
+        route: data.route,
+        method: data.method,
+        retryAfter: data.retryAfter,
+        timeToReset: data.timeToReset,
+        limit: data.limit,
+        global: data.global,
+        scope: data.scope,
+      },
+      "discord REST rate limited",
+    );
+  });
+
+  client.rest.on(RESTEvents.InvalidRequestWarning, (data) => {
+    logger.warn({ data }, "discord REST invalid request warning");
+  });
+
+  client.rest.on(RESTEvents.Response, (request, response) => {
+    if (response.status < 400) return;
+    logger.warn(
+      {
+        request: {
+          method: request.method,
+          path: request.path,
+          route: request.route,
+          retries: request.retries,
+        },
+        response: {
+          status: response.status,
+          statusText: response.statusText,
+        },
+      },
+      "discord REST error response",
+    );
   });
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
@@ -88,7 +145,16 @@ export function buildClient(): Client {
               content: "Something went wrong.",
               allowedMentions: NO_MENTIONS,
             })
-            .catch(() => undefined);
+            .catch((replyErr) =>
+              logger.warn(
+                {
+                  err: replyErr,
+                  discord: discordErrorDetails(replyErr),
+                  interactionId: interaction.id,
+                },
+                "interaction error editReply failed",
+              ),
+            );
         } else {
           await interaction
             .reply({
@@ -96,7 +162,16 @@ export function buildClient(): Client {
               flags: MessageFlags.Ephemeral,
               allowedMentions: NO_MENTIONS,
             })
-            .catch(() => undefined);
+            .catch((replyErr) =>
+              logger.warn(
+                {
+                  err: replyErr,
+                  discord: discordErrorDetails(replyErr),
+                  interactionId: interaction.id,
+                },
+                "interaction error reply failed",
+              ),
+            );
         }
       }
     }
@@ -129,7 +204,10 @@ export function buildClient(): Client {
         allowedMentions: NO_MENTIONS,
       });
     } catch (err) {
-      logger.error({ err }, "reaction handler failed");
+      logger.error(
+        { err, discord: discordErrorDetails(err) },
+        "reaction handler failed",
+      );
     }
   });
 
@@ -162,10 +240,22 @@ export function buildClient(): Client {
       }
 
       // Run sweep + auto-translate in parallel; sweep failures don't block translation
-      await Promise.allSettled([
+      const [sweepResult, translateResult] = await Promise.allSettled([
         agent.sweepStaleThreads(message),
         agent.autoTranslateMessage(message),
       ]);
+      if (sweepResult.status === "rejected") {
+        logger.warn(
+          { err: sweepResult.reason, messageId: message.id },
+          "stale thread sweep failed",
+        );
+      }
+      if (translateResult.status === "rejected") {
+        logger.error(
+          { err: translateResult.reason, messageId: message.id },
+          "auto-translate handler failed",
+        );
+      }
     } catch (err) {
       logger.error(
         { err, messageId: message.id },

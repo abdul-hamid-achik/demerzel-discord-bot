@@ -32,7 +32,11 @@ async function deliverReminder(
 
   if (reminder.deliveryTarget === "dm") {
     const user = await client.users.fetch(reminder.creatorId);
-    await sendDiscordChunks(user, content);
+    await sendDiscordChunks(user, content, {
+      operation: "reminder-dm",
+      reminderId: reminder.id,
+      userId: reminder.creatorId,
+    });
     return;
   }
 
@@ -45,7 +49,11 @@ async function deliverReminder(
     throw new Error(`channel ${reminder.channelId} is not sendable`);
   }
 
-  await sendDiscordChunks(channel, content);
+  await sendDiscordChunks(channel, content, {
+    operation: "reminder-channel",
+    reminderId: reminder.id,
+    channelId: reminder.channelId,
+  });
 }
 
 export function startReminderScheduler(

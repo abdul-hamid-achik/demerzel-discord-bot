@@ -20,6 +20,8 @@ import {
 import { tavilySearch } from "./tools/tavily.js";
 
 const MAX_TOOL_ITERATIONS = 4;
+const OPENAI_REQUEST_TIMEOUT_MS = 30_000;
+const OPENAI_MAX_RETRIES = 1;
 
 const SYSTEM_PROMPT = [
   "You are Demerzel, the Discord assistant for the StarWarrior community.",
@@ -146,7 +148,12 @@ export class DemerzelChat {
       throw new Error("OPENAI_API_KEY is required for Demerzel chat");
     }
     this.client =
-      options.client ?? new OpenAI({ apiKey: config.OPENAI_API_KEY });
+      options.client ??
+      new OpenAI({
+        apiKey: config.OPENAI_API_KEY,
+        timeout: OPENAI_REQUEST_TIMEOUT_MS,
+        maxRetries: OPENAI_MAX_RETRIES,
+      });
     this.model = options.model ?? config.OPENAI_CHAT_MODEL;
   }
 

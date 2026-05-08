@@ -3,6 +3,7 @@ import { demerzelChat } from "../../ai/chat.js";
 import { logger } from "../../logger.js";
 import {
   chunkDiscordText,
+  discordErrorDetails,
   NO_MENTIONS,
   NO_REPLY_MENTIONS,
 } from "../messages.js";
@@ -63,7 +64,17 @@ export async function handleMention(message: Message): Promise<void> {
           "Hey! Ask me anything, or reply to a message asking me to translate.",
         allowedMentions: NO_REPLY_MENTIONS,
       })
-      .catch((err) => logger.warn({ err }, "bare-mention reply failed"));
+      .catch((err) =>
+        logger.warn(
+          {
+            err,
+            discord: discordErrorDetails(err),
+            messageId: message.id,
+            channelId: message.channelId,
+          },
+          "bare-mention reply failed",
+        ),
+      );
     return;
   }
 
@@ -75,6 +86,16 @@ export async function handleMention(message: Message): Promise<void> {
   }
 
   try {
+    logger.info(
+      {
+        messageId: message.id,
+        channelId: message.channelId,
+        authorId: message.author.id,
+        contentLen: cleaned.length,
+      },
+      "demerzel chat request started",
+    );
+
     const result = await demerzelChat().respond({
       userMessage: cleaned,
       authorTag: message.author.tag,
@@ -95,19 +116,33 @@ export async function handleMention(message: Message): Promise<void> {
 
     const parts = chunkDiscordText(result.reply);
     let first = true;
-    for (const part of parts) {
-      if (first) {
-        await message.reply({
-          content: part,
-          allowedMentions: NO_REPLY_MENTIONS,
-        });
-        first = false;
-      } else if ("send" in message.channel) {
-        await message.channel.send({
-          content: part,
-          allowedMentions: NO_MENTIONS,
-        });
+    try {
+      for (const part of parts) {
+        if (first) {
+          await message.reply({
+            content: part,
+            allowedMentions: NO_REPLY_MENTIONS,
+          });
+          first = false;
+        } else if ("send" in message.channel) {
+          await message.channel.send({
+            content: part,
+            allowedMentions: NO_MENTIONS,
+          });
+        }
       }
+    } catch (err) {
+      logger.error(
+        {
+          err,
+          discord: discordErrorDetails(err),
+          messageId: message.id,
+          channelId: message.channelId,
+          partCount: parts.length,
+        },
+        "demerzel chat response send failed",
+      );
+      throw err;
     }
   } catch (err) {
     logger.error({ err, messageId: message.id }, "demerzel chat failed");
@@ -116,6 +151,16 @@ export async function handleMention(message: Message): Promise<void> {
         content: "I couldn't answer that just now — try again in a moment.",
         allowedMentions: NO_REPLY_MENTIONS,
       })
-      .catch(() => undefined);
+      .catch((replyErr) =>
+        logger.warn(
+          {
+            err: replyErr,
+            discord: discordErrorDetails(replyErr),
+            messageId: message.id,
+            channelId: message.channelId,
+          },
+          "demerzel chat fallback reply failed",
+        ),
+      );
   }
 }

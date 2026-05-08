@@ -1,4 +1,5 @@
 import type { MessageMentionOptions } from "discord.js";
+import { logger } from "../logger.js";
 
 export const NO_MENTIONS: MessageMentionOptions = { parse: [] };
 export const NO_REPLY_MENTIONS: MessageMentionOptions = {
@@ -23,6 +24,75 @@ export function isDiscordChunkTarget(
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DEFAULT_CHUNK_SIZE = 1900;
+
+type JsonLogValue = string | number | boolean | null | undefined;
+
+export type DiscordLogContext = Record<string, JsonLogValue>;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function setIfPrimitive(
+  target: Record<string, JsonLogValue>,
+  key: string,
+  value: unknown,
+): void {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    target[key] = value;
+  }
+}
+
+export function discordErrorDetails(err: unknown): Record<string, JsonLogValue> {
+  const details: Record<string, JsonLogValue> = {};
+
+  if (err instanceof Error) {
+    details.name = err.name;
+    details.message = err.message;
+  }
+
+  const record = asRecord(err);
+  if (!record) return details;
+
+  for (const key of [
+    "code",
+    "status",
+    "method",
+    "url",
+    "route",
+    "retryAfter",
+    "global",
+  ]) {
+    setIfPrimitive(details, key, record[key]);
+  }
+
+  const rawError = asRecord(record.rawError);
+  if (rawError) {
+    setIfPrimitive(details, "rawCode", rawError.code);
+    setIfPrimitive(details, "rawMessage", rawError.message);
+  }
+
+  return details;
+}
+
+function discordTargetDetails(
+  target: DiscordChunkTarget,
+): Record<string, JsonLogValue> {
+  const record = asRecord(target);
+  if (!record) return {};
+
+  const details: Record<string, JsonLogValue> = {};
+  for (const key of ["id", "type", "guildId", "channelId"]) {
+    setIfPrimitive(details, key, record[key]);
+  }
+  return details;
+}
 
 export function chunkDiscordText(
   text: string,
@@ -61,8 +131,28 @@ export function chunkDiscordText(
 export async function sendDiscordChunks(
   target: DiscordChunkTarget,
   content: string,
+  context: DiscordLogContext = {},
 ): Promise<void> {
-  for (const chunk of chunkDiscordText(content)) {
-    await target.send({ content: chunk, allowedMentions: NO_MENTIONS });
+  const chunks = chunkDiscordText(content);
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]!;
+    try {
+      await target.send({ content: chunk, allowedMentions: NO_MENTIONS });
+    } catch (err) {
+      logger.error(
+        {
+          err,
+          discord: discordErrorDetails(err),
+          target: discordTargetDetails(target),
+          ...context,
+          chunkIndex: i,
+          chunkCount: chunks.length,
+          chunkLen: chunk.length,
+          contentLen: content.length,
+        },
+        "discord chunk send failed",
+      );
+      throw err;
+    }
   }
 }
