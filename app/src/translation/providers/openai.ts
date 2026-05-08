@@ -2,16 +2,23 @@ import OpenAI from "openai";
 import { config } from "../../config.js";
 import type { TranslateInput, TranslateOutput, TranslationProvider } from "./index.js";
 
+interface OpenAIProviderOptions {
+  client?: OpenAI;
+  model?: string;
+}
+
 export class OpenAIProvider implements TranslationProvider {
   readonly name = "openai";
   private client: OpenAI;
-  private model = "gpt-4o-mini";
+  private model: string;
 
-  constructor() {
-    if (!config.OPENAI_API_KEY) {
+  constructor(options: OpenAIProviderOptions = {}) {
+    if (!options.client && !config.OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY is required when TRANSLATION_PROVIDER=openai");
     }
-    this.client = new OpenAI({ apiKey: config.OPENAI_API_KEY });
+    this.client =
+      options.client ?? new OpenAI({ apiKey: config.OPENAI_API_KEY });
+    this.model = options.model ?? config.OPENAI_TRANSLATION_MODEL;
   }
 
   async translate(input: TranslateInput): Promise<TranslateOutput> {
@@ -27,7 +34,6 @@ export class OpenAIProvider implements TranslationProvider {
 
     const completion = await this.client.chat.completions.create({
       model: this.model,
-      temperature: 0.2,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -45,7 +51,6 @@ export class OpenAIProvider implements TranslationProvider {
   async detectLanguage(text: string): Promise<string> {
     const completion = await this.client.chat.completions.create({
       model: this.model,
-      temperature: 0,
       messages: [
         {
           role: "system",

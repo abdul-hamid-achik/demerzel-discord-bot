@@ -19,7 +19,6 @@ import {
 } from "../reminders/time.js";
 import { tavilySearch } from "./tools/tavily.js";
 
-const MODEL = "gpt-4o-mini";
 const MAX_TOOL_ITERATIONS = 4;
 
 const SYSTEM_PROMPT = [
@@ -133,14 +132,22 @@ export interface ChatResult {
   toolCallsUsed: number;
 }
 
+interface DemerzelChatOptions {
+  client?: OpenAI;
+  model?: string;
+}
+
 export class DemerzelChat {
   private client: OpenAI;
+  private model: string;
 
-  constructor() {
-    if (!config.OPENAI_API_KEY) {
+  constructor(options: DemerzelChatOptions = {}) {
+    if (!options.client && !config.OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY is required for Demerzel chat");
     }
-    this.client = new OpenAI({ apiKey: config.OPENAI_API_KEY });
+    this.client =
+      options.client ?? new OpenAI({ apiKey: config.OPENAI_API_KEY });
+    this.model = options.model ?? config.OPENAI_CHAT_MODEL;
   }
 
   async respond(req: ChatRequest): Promise<ChatResult> {
@@ -170,8 +177,7 @@ export class DemerzelChat {
       if (req.triggerMessage) tools.push(CREATE_REMINDER_TOOL);
 
       const completion = await this.client.chat.completions.create({
-        model: MODEL,
-        temperature: 0.6,
+        model: this.model,
         messages,
         tools: tools.length > 0 ? tools : undefined,
       });

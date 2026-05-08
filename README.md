@@ -146,6 +146,11 @@ Set `TRANSLATION_PROVIDER` to `openai`, `deepl`, or `google`. Each provider is
 behind a small interface (`app/src/translation/providers/index.ts`) — adding a
 new one means implementing `translate()` and registering it in the factory.
 
+OpenAI-backed chat and translation default to `gpt-5.4-nano` to keep Discord
+usage inexpensive. Set `OPENAI_CHAT_MODEL` or `OPENAI_TRANSLATION_MODEL` to
+`gpt-5.4-mini` if you need stronger replies and can accept the higher token
+cost.
+
 ## Design notes
 
 - Original messages are never edited or deleted. Translations are surfaced
@@ -164,7 +169,7 @@ new one means implementing `translate()` and registering it in the factory.
 
 - Droplet `s-1vcpu-2gb`: ~$12/month
 - NeonDB: free tier sufficient for early use
-- Translation API: variable; cache hits are free
+- OpenAI API: defaults to `gpt-5.4-nano`; cache hits are free for translations
 
 ## Tearing it down
 
