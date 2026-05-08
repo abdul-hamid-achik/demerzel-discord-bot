@@ -1,8 +1,16 @@
 import * as digitalocean from "@pulumi/digitalocean";
 import * as pulumi from "@pulumi/pulumi";
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+
+function sshKeyFingerprint(publicKey: string): string {
+  const base64 = publicKey.split(/\s+/)[1];
+  if (!base64) throw new Error("invalid SSH public key format");
+  const hex = createHash("md5").update(Buffer.from(base64, "base64")).digest("hex");
+  return hex.match(/.{2}/g)!.join(":");
+}
 
 const cfg = new pulumi.Config();
 
@@ -13,22 +21,21 @@ const dropletName = cfg.get("dropletName") ?? "hermes-bot";
 const projectName = cfg.get("projectName") ?? "hermes-translator";
 const enableBackups = cfg.getBoolean("enableBackups") ?? false;
 const enableMonitoring = cfg.getBoolean("enableMonitoring") ?? true;
-const sshPublicKeyPath =
+const rawSshKeyPath =
   cfg.get("sshPublicKeyPath") ?? path.join(os.homedir(), ".ssh", "id_ed25519.pub");
+const sshPublicKeyPath = rawSshKeyPath.startsWith("~/")
+  ? path.join(os.homedir(), rawSshKeyPath.slice(2))
+  : rawSshKeyPath;
 const sshAllowedCidr = cfg.get("sshAllowedCidr") || "0.0.0.0/0";
 
 const sshPublicKey = fs.readFileSync(sshPublicKeyPath, "utf8").trim();
-
-const sshKey = new digitalocean.SshKey("hermes-deploy-key", {
-  name: `${dropletName}-deploy`,
-  publicKey: sshPublicKey,
-});
+const sshFingerprint = sshKeyFingerprint(sshPublicKey);
 
 const cloudInitTemplate = fs.readFileSync(
   path.join(__dirname, "cloud-init.yaml"),
   "utf8",
 );
-const userData = cloudInitTemplate.replace("${SSH_PUBLIC_KEY}", sshPublicKey);
+const userData = cloudInitTemplate.replaceAll("__SSH_PUBLIC_KEY__", sshPublicKey);
 
 const droplet = new digitalocean.Droplet("hermes-droplet", {
   name: dropletName,
@@ -38,7 +45,7 @@ const droplet = new digitalocean.Droplet("hermes-droplet", {
   backups: enableBackups,
   monitoring: enableMonitoring,
   ipv6: true,
-  sshKeys: [sshKey.fingerprint],
+  sshKeys: [sshFingerprint],
   userData,
   tags: ["hermes", "discord-bot", "translator"],
 });
@@ -98,6 +105,7 @@ export const dropletId = droplet.id;
 export const dropletIp = droplet.ipv4Address;
 export const dropletIpv6 = droplet.ipv6Address;
 export const dropletName_ = droplet.name;
+export const sshKeyFingerprintOut = sshFingerprint;
 export const sshCommand = pulumi.interpolate`ssh deploy@${droplet.ipv4Address}`;
 export const firewallId = firewall.id;
 export const projectId = project.id;

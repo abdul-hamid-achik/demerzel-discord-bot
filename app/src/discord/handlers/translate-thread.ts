@@ -1,6 +1,6 @@
 import type { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
 import { ChannelType, MessageFlags } from "discord.js";
-import { hermes } from "../../hermes/agent.js";
+import { agent } from "../../agent/agent.js";
 
 const DEFAULT_LANGUAGES = ["en", "es", "it", "pt"];
 
@@ -37,7 +37,7 @@ export async function handleTranslateThreadSlash(
   }
 
   const languages = parseLanguages(interaction.options.getString("languages"));
-  await hermes.createTranslationThread(message, languages);
+  await agent.createTranslationThread(message, languages);
   await interaction.editReply(`Translation thread created on the latest message.`);
 }
 
@@ -45,6 +45,6 @@ export async function handleTranslateThreadContext(
   interaction: MessageContextMenuCommandInteraction,
 ): Promise<void> {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  await hermes.createTranslationThread(interaction.targetMessage, DEFAULT_LANGUAGES);
+  await agent.createTranslationThread(interaction.targetMessage, DEFAULT_LANGUAGES);
   await interaction.editReply("Translation thread created.");
 }

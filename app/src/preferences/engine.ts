@@ -37,22 +37,6 @@ export class PreferenceEngine {
     return row!;
   }
 
-  async setAutoTranslate(
-    discordUserId: string,
-    autoTranslate: boolean,
-  ): Promise<void> {
-    await db
-      .insert(userPreferences)
-      .values({
-        discordUserId,
-        primaryLanguage: DEFAULT_LANGUAGE,
-        autoTranslate,
-      })
-      .onConflictDoUpdate({
-        target: userPreferences.discordUserId,
-        set: { autoTranslate, updatedAt: sql`now()` },
-      });
-  }
 }
 
 export const preferences = new PreferenceEngine();

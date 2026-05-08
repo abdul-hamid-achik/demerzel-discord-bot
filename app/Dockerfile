@@ -11,5 +11,6 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
+RUN mkdir -p /app/logs && chown -R bun:bun /app/logs
 USER bun
 CMD ["bun", "run", "src/index.ts"]

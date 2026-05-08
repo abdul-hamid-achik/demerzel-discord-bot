@@ -1,15 +1,16 @@
 import type { ChatInputCommandInteraction, MessageContextMenuCommandInteraction } from "discord.js";
 import { MessageFlags } from "discord.js";
-import { hermes } from "../../hermes/agent.js";
+import { agent } from "../../agent/agent.js";
+
 
 export async function handleTranslateSlash(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
   const text = interaction.options.getString("text", true);
-  const target = interaction.options.getString("to") ?? undefined;
+  const target = interaction.options.getString("to", true);
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const result = await hermes.translateForUser({
+  const result = await agent.translateForUser({
     text,
     requesterId: interaction.user.id,
     channelId: interaction.channelId,
@@ -18,7 +19,7 @@ export async function handleTranslateSlash(
 
   await interaction.editReply({
     content: [
-      `${hermes.flag(result.targetLanguage)} ${result.translatedText}`,
+      `${agent.flag(result.targetLanguage)} ${result.translatedText}`,
       `_${result.sourceLanguage} → ${result.targetLanguage} · ${result.provider}${result.cached ? " · cached" : ""}_`,
     ].join("\n"),
   });
@@ -37,7 +38,7 @@ export async function handleTranslateContext(
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const result = await hermes.translateForUser({
+  const result = await agent.translateForUser({
     text,
     requesterId: interaction.user.id,
     channelId: interaction.channelId,
@@ -46,7 +47,7 @@ export async function handleTranslateContext(
 
   await interaction.editReply({
     content: [
-      `${hermes.flag(result.targetLanguage)} ${result.translatedText}`,
+      `${agent.flag(result.targetLanguage)} ${result.translatedText}`,
       `_${result.sourceLanguage} → ${result.targetLanguage} · ${result.provider}${result.cached ? " · cached" : ""}_`,
     ].join("\n"),
   });

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
+  integer,
   pgTable,
   primaryKey,
   text,
@@ -75,6 +76,21 @@ export const translationEvents = pgTable(
   }),
 );
 
+export const channelSettings = pgTable("channel_settings", {
+  channelId: varchar("channel_id", { length: 32 }).primaryKey(),
+  guildId: varchar("guild_id", { length: 32 }),
+  autoTranslate: boolean("auto_translate").notNull().default(false),
+  targetLanguages: text("target_languages")
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
+  // Minutes after which a translation thread is auto-cleaned up if it has no
+  // human replies. 0 = never delete. NULL = use the app default.
+  cleanupMinutes: integer("cleanup_minutes").default(5),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type UserPreference = typeof userPreferences.$inferSelect;
 export type NewUserPreference = typeof userPreferences.$inferInsert;
 export type MessageIndexRow = typeof messageIndex.$inferSelect;
@@ -83,3 +99,5 @@ export type TranslationCacheRow = typeof translationCache.$inferSelect;
 export type NewTranslationCacheRow = typeof translationCache.$inferInsert;
 export type TranslationEvent = typeof translationEvents.$inferSelect;
 export type NewTranslationEvent = typeof translationEvents.$inferInsert;
+export type ChannelSetting = typeof channelSettings.$inferSelect;
+export type NewChannelSetting = typeof channelSettings.$inferInsert;

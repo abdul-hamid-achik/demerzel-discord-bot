@@ -1,11 +1,8 @@
-import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { translationCache } from "../db/schema.js";
 
-export function hashText(text: string): string {
-  return createHash("sha256").update(text.trim()).digest("hex");
-}
+export { hashText } from "./hash.js";
 
 export async function readCache(
   originalHash: string,

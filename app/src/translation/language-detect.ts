@@ -1,6 +1,5 @@
+import { isSupportedLanguage } from "./lang-util.js";
 import { getProvider } from "./providers/index.js";
-
-const SUPPORTED = ["en", "es", "it", "pt", "fr", "de", "ru", "ja", "zh"] as const;
 
 // Cheap heuristic for very short strings; fall back to provider detection otherwise.
 const HINTS: Array<[RegExp, string]> = [
@@ -8,6 +7,7 @@ const HINTS: Array<[RegExp, string]> = [
   [/\b(que|para|con|los|las|esto|hola)\b/i, "es"],
   [/\b(che|sono|della|delle|grazie|ciao|andiamo|ragazzi)\b/i, "it"],
   [/\b(que|para|com|você|obrigado|galera)\b/i, "pt"],
+  [/\b(jest|nie|tak|dzięki|cześć|dzień|chłopaki|chodźmy)\b/i, "pl"],
 ];
 
 export async function detectLanguage(text: string): Promise<string> {
@@ -21,13 +21,12 @@ export async function detectLanguage(text: string): Promise<string> {
   }
 
   const provider = getProvider();
-  if (provider.detectLanguage) {
-    try {
-      const code = await provider.detectLanguage(trimmed);
-      return SUPPORTED.includes(code as (typeof SUPPORTED)[number]) ? code : code || "und";
-    } catch {
-      return "und";
-    }
+  if (!provider.detectLanguage) return "und";
+
+  try {
+    const code = (await provider.detectLanguage(trimmed)).toLowerCase();
+    return isSupportedLanguage(code) ? code : code || "und";
+  } catch {
+    return "und";
   }
-  return "und";
 }

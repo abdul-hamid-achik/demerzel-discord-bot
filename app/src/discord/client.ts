@@ -2,14 +2,17 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  MessageFlags,
   Partials,
+  type Channel,
   type Interaction,
   type Message,
 } from "discord.js";
 import { config } from "../config.js";
-import { hermes } from "../hermes/agent.js";
+import { agent } from "../agent/agent.js";
 import { logger } from "../logger.js";
 import { preferences } from "../preferences/engine.js";
+import { handleAutoTranslate } from "./handlers/auto-translate.js";
 import { handleLanguage } from "./handlers/language.js";
 import { handleStats } from "./handlers/stats.js";
 import {
@@ -20,6 +23,10 @@ import {
   handleTranslateThreadContext,
   handleTranslateThreadSlash,
 } from "./handlers/translate-thread.js";
+
+function channelName(channel: Channel): string {
+  return "name" in channel && typeof channel.name === "string" ? channel.name : "channel";
+}
 
 export function buildClient(): Client {
   const client = new Client({
@@ -48,6 +55,8 @@ export function buildClient(): Client {
             return await handleTranslateThreadSlash(interaction);
           case "stats":
             return await handleStats(interaction);
+          case "auto-translate":
+            return await handleAutoTranslate(interaction);
         }
       }
       if (interaction.isMessageContextMenuCommand()) {
@@ -62,7 +71,7 @@ export function buildClient(): Client {
       logger.error({ err }, "interaction handler failed");
       if (interaction.isRepliable() && !interaction.replied) {
         await interaction
-          .reply({ content: "Something went wrong.", ephemeral: true })
+          .reply({ content: "Something went wrong.", flags: MessageFlags.Ephemeral })
           .catch(() => undefined);
       }
     }
@@ -81,7 +90,7 @@ export function buildClient(): Client {
       if (!message.content) return;
 
       const target = await preferences.getPrimaryLanguage(user.id);
-      const result = await hermes.translateForUser({
+      const result = await agent.translateForUser({
         text: message.content,
         requesterId: user.id,
         channelId: message.channelId,
@@ -91,24 +100,40 @@ export function buildClient(): Client {
 
       const dm = await user.createDM();
       await dm.send(
-        `${hermes.flag(result.targetLanguage)} ${result.translatedText}\n_from #${
-          (message.channel as { name?: string }).name ?? "channel"
-        }_`,
+        `${agent.flag(result.targetLanguage)} ${result.translatedText}\n_from #${channelName(message.channel)}_`,
       );
     } catch (err) {
       logger.error({ err }, "reaction handler failed");
     }
   });
 
-  // Message indexing: keep a record so future translations can hit cache without
-  // refetching content. We don't translate proactively — that's the whole point.
+  // Indexes every user message (cheap, lets future on-demand translations hit
+  // cache) and — in channels that opted in via /auto-translate — posts a
+  // translation thread under the message.
   client.on(Events.MessageCreate, async (message: Message) => {
     try {
       if (message.author.bot) return;
-      if (!message.content || message.content.length < 2) return;
-      await hermes.indexMessage(message);
+      logger.info(
+        {
+          messageId: message.id,
+          channelId: message.channelId,
+          guildId: message.guildId,
+          authorId: message.author.id,
+          authorTag: message.author.tag,
+          contentLen: message.content?.length ?? 0,
+          channelType: message.channel.type,
+        },
+        "messageCreate received",
+      );
+      if (!message.content) return;
+      await agent.indexMessage(message);
+      // Run sweep + auto-translate in parallel; sweep failures don't block translation
+      await Promise.allSettled([
+        agent.sweepStaleThreads(message),
+        agent.autoTranslateMessage(message),
+      ]);
     } catch (err) {
-      logger.error({ err, messageId: message.id }, "indexing failed");
+      logger.error({ err, messageId: message.id }, "messageCreate handler failed");
     }
   });
 

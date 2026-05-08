@@ -36,21 +36,10 @@ export async function handleLanguage(
     const lines = [
       `**Primary:** ${pref.primaryLanguage}`,
       `**Secondary:** ${pref.secondaryLanguages.join(", ") || "—"}`,
-      `**Auto-translate:** ${pref.autoTranslate ? "on" : "off"}`,
       `**Show original:** ${pref.showOriginal ? "on" : "off"}`,
     ];
     await interaction.reply({
       content: lines.join("\n"),
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  if (sub === "auto") {
-    const enabled = interaction.options.getBoolean("enabled", true);
-    await preferences.setAutoTranslate(interaction.user.id, enabled);
-    await interaction.reply({
-      content: `Auto-translate ${enabled ? "enabled" : "disabled"}.`,
       flags: MessageFlags.Ephemeral,
     });
     return;

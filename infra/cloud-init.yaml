@@ -1,9 +1,12 @@
 #cloud-config
 # Bootstrap for the Hermes Translator droplet.
-# Renders via Pulumi: ${SSH_PUBLIC_KEY} is interpolated before the file is sent.
+# Renders via Pulumi: __SSH_PUBLIC_KEY__ is interpolated before the file is sent.
+#
+# We skip package_upgrade on first boot - it adds 5-10 minutes and bounces
+# sshd repeatedly. Security updates run via unattended-upgrades afterward.
+# Comments stay ASCII-only - cloud-init's YAML loader rejects non-ASCII bytes.
 
 package_update: true
-package_upgrade: true
 
 packages:
   - ca-certificates
@@ -20,7 +23,7 @@ users:
     shell: /bin/bash
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     ssh_authorized_keys:
-      - ${SSH_PUBLIC_KEY}
+      - __SSH_PUBLIC_KEY__
 
 write_files:
   - path: /etc/ssh/sshd_config.d/99-hardening.conf
@@ -29,7 +32,6 @@ write_files:
       PermitRootLogin no
       PasswordAuthentication no
       KbdInteractiveAuthentication no
-      ChallengeResponseAuthentication no
       UsePAM yes
       X11Forwarding no
       MaxAuthTries 3
@@ -54,7 +56,6 @@ write_files:
 
   - path: /opt/hermes/README.txt
     permissions: "0644"
-    owner: deploy:deploy
     content: |
       Hermes Translator droplet.
       Deploy app to /opt/hermes/app and run `docker compose up -d`.

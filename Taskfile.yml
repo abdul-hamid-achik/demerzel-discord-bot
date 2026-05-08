@@ -71,11 +71,18 @@ tasks:
         ssh {{.DROPLET_USER}}@$IP 'cd {{.APP_REMOTE_DIR}} && docker compose up -d --build'
 
   remote:logs:
-    desc: Tail bot logs on the droplet
+    desc: Tail bot logs on the droplet (live container stdout)
     cmds:
       - |
         IP=$(cd infra && pulumi stack output dropletIp)
         ssh {{.DROPLET_USER}}@$IP 'cd {{.APP_REMOTE_DIR}} && docker compose logs -f --tail=200'
+
+  remote:logfile:
+    desc: Tail the persistent log file (survives container restarts)
+    cmds:
+      - |
+        IP=$(cd infra && pulumi stack output dropletIp)
+        ssh {{.DROPLET_USER}}@$IP 'cd {{.APP_REMOTE_DIR}} && docker compose exec -T app tail -F /app/logs/bot.log'
 
   remote:restart:
     desc: Restart the bot container on the droplet
@@ -125,6 +132,20 @@ tasks:
     deps: [install]
     cmds:
       - bun run lint
+
+  test:
+    desc: Run unit tests
+    dir: app
+    deps: [install]
+    cmds:
+      - bun test
+
+  test:watch:
+    desc: Run unit tests in watch mode
+    dir: app
+    deps: [install]
+    cmds:
+      - bun test --watch
 
   migrate:
     desc: Generate and apply Drizzle migrations against DATABASE_URL
