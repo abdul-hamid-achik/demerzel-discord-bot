@@ -5,8 +5,8 @@ config:
   hermes-translator-infra:region: nyc3
   hermes-translator-infra:size: s-1vcpu-2gb
   hermes-translator-infra:image: ubuntu-24-04-x64
-  hermes-translator-infra:dropletName: hermes-bot
-  hermes-translator-infra:projectName: hermes-translator
+  hermes-translator-infra:dropletName: demerzel-bot
+  hermes-translator-infra:projectName: demerzel-discord-bot
   hermes-translator-infra:enableBackups: "false"
   hermes-translator-infra:enableMonitoring: "true"
 

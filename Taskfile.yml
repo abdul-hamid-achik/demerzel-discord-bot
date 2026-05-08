@@ -1,12 +1,12 @@
 version: "3"
 
-# Hermes Translator — task runner.
+# Demerzel — task runner.
 # Install Task: https://taskfile.dev/installation/  (brew install go-task)
 # Run `task` to list available tasks.
 
 vars:
   DROPLET_USER: '{{.DROPLET_USER | default "deploy"}}'
-  APP_REMOTE_DIR: /opt/hermes/app
+  APP_REMOTE_DIR: /opt/demerzel/app
 
 tasks:
   default:
@@ -63,12 +63,14 @@ tasks:
       - |
         IP=$(cd infra && pulumi stack output dropletIp)
         echo "Deploying to $IP..."
+        ssh {{.DROPLET_USER}}@$IP 'sudo mkdir -p {{.APP_REMOTE_DIR}} && sudo chown -R {{.DROPLET_USER}}:{{.DROPLET_USER}} /opt/demerzel'
         rsync -avz --delete \
           --exclude node_modules --exclude .env \
           app/ {{.DROPLET_USER}}@$IP:{{.APP_REMOTE_DIR}}/
         scp app/.env {{.DROPLET_USER}}@$IP:{{.APP_REMOTE_DIR}}/.env 2>/dev/null \
           || echo "warn: app/.env not found locally — copy it manually"
-        ssh {{.DROPLET_USER}}@$IP 'cd {{.APP_REMOTE_DIR}} && docker compose up -d --build'
+        ssh {{.DROPLET_USER}}@$IP 'cd {{.APP_REMOTE_DIR}} && docker compose up -d --build --remove-orphans'
+        ssh {{.DROPLET_USER}}@$IP 'docker rm -f hermes-bot >/dev/null 2>&1 || true'
 
   remote:logs:
     desc: Tail bot logs on the droplet (live container stdout)

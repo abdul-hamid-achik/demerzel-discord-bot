@@ -19,7 +19,7 @@ export async function handleStats(
     channels.map((c) => `<#${c.channelId}> — ${c.count}`).join("\n") || "_no data_";
 
   const embed = new EmbedBuilder()
-    .setTitle("Hermes translation stats")
+    .setTitle("Demerzel translation stats")
     .addFields(
       { name: "Top languages", value: langLines, inline: true },
       { name: "Top channels", value: chanLines, inline: true },

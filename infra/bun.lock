@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "hermes-translator-infra",
+      "name": "demerzel-discord-bot-infra",
       "dependencies": {
         "@pulumi/digitalocean": "^4.51.0",
         "@pulumi/pulumi": "^3.150.0",

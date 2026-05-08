@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: hermes-translator:latest
-    container_name: hermes-bot
+    image: demerzel-discord-bot:latest
+    container_name: demerzel-bot
     restart: unless-stopped
     env_file: .env
     volumes:

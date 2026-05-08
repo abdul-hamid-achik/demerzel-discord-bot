@@ -1,4 +1,4 @@
-# Hermes Translator — Discord Bot + DigitalOcean IaC
+# Demerzel — Discord Bot + DigitalOcean IaC
 
 Multilingual Discord assistant. Pulumi (TypeScript) provisions a DigitalOcean
 droplet; the bot runs in Docker on that droplet and uses NeonDB for storage.
@@ -96,7 +96,7 @@ task migrate     # drizzle-kit generate + drizzle-kit migrate
 task deploy
 ```
 
-This rsyncs `app/` to `/opt/hermes/app` on the droplet and runs
+This rsyncs `app/` to `/opt/demerzel/app` on the droplet and runs
 `docker compose up -d --build`. Tail logs with:
 
 ```bash
@@ -161,9 +161,9 @@ cost.
   language detection for every message in every channel.
 - Reminders are claimed from the database before delivery, which avoids obvious
   duplicate sends if more than one bot process is running.
-- The `HermesAgent` class is the orchestration seam — Discord handlers call it,
-  it owns the translation/cache/analytics flow. Future work (Hermes Agent
-  framework, web overlay, summaries) plugs in here without touching handlers.
+- The `BotAgent` class is the orchestration seam — Discord handlers call it,
+  it owns the translation/cache/analytics flow. Future work such as a web
+  overlay or summaries plugs in here without touching handlers.
 
 ## Costs
 

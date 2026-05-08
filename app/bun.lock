@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "hermes-translator",
+      "name": "demerzel-discord-bot",
       "dependencies": {
         "@neondatabase/serverless": "^0.10.0",
         "discord.js": "^14.16.0",
