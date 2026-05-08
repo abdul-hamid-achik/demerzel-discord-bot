@@ -1,0 +1,6 @@
+name: hermes-translator-infra
+runtime:
+  name: nodejs
+  options:
+    packagemanager: bun
+description: DigitalOcean droplet for the Hermes Translator Discord bot

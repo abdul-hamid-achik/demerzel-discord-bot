@@ -1,0 +1,36 @@
+{
+  "name": "hermes-translator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "module": "src/index.ts",
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "register-commands": "bun run scripts/register-commands.ts",
+    "db:generate": "bunx drizzle-kit generate",
+    "db:migrate": "bunx drizzle-kit migrate",
+    "db:studio": "bunx drizzle-kit studio",
+    "lint": "bunx tsc --noEmit",
+    "format": "bunx prettier --write ."
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.0",
+    "discord.js": "^14.16.0",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.36.0",
+    "openai": "^4.70.0",
+    "pino": "^9.5.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.13",
+    "drizzle-kit": "^0.28.0",
+    "pino-pretty": "^11.3.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0"
+  }
+}

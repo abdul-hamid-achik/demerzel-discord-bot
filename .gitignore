@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+.bun/
+
+# build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# pulumi
+infra/Pulumi.*.yaml
+!infra/Pulumi.yaml
+!infra/Pulumi.*.yaml.example
+.pulumi/
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor
+.vscode/
+.idea/
+.DS_Store
+
+# drizzle
+drizzle/

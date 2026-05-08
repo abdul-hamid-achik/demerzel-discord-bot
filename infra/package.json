@@ -1,0 +1,22 @@
+{
+  "name": "hermes-translator-infra",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "main": "index.ts",
+  "scripts": {
+    "preview": "pulumi preview",
+    "up": "pulumi up",
+    "destroy": "pulumi destroy",
+    "output": "pulumi stack output"
+  },
+  "trustedDependencies": ["@pulumi/pulumi"],
+  "dependencies": {
+    "@pulumi/digitalocean": "^4.51.0",
+    "@pulumi/pulumi": "^3.150.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

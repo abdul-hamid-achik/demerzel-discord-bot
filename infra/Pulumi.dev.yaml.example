@@ -1,0 +1,17 @@
+config:
+  # DigitalOcean PAT — set via: pulumi config set digitalocean:token <token> --secret
+  # digitalocean:token: <set with --secret>
+
+  hermes-translator-infra:region: nyc3
+  hermes-translator-infra:size: s-1vcpu-2gb
+  hermes-translator-infra:image: ubuntu-24-04-x64
+  hermes-translator-infra:dropletName: hermes-bot
+  hermes-translator-infra:projectName: hermes-translator
+  hermes-translator-infra:enableBackups: "false"
+  hermes-translator-infra:enableMonitoring: "true"
+
+  # Path to your public SSH key — used by cloud-init for the deploy user.
+  hermes-translator-infra:sshPublicKeyPath: ~/.ssh/id_ed25519.pub
+
+  # Optional: lock SSH ingress to this CIDR. Leave blank for 0.0.0.0/0.
+  hermes-translator-infra:sshAllowedCidr: ""

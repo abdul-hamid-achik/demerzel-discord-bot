@@ -1,0 +1,43 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hermes-translator:latest
+    container_name: hermes-bot
+    restart: unless-stopped
+    env_file: .env
+    # depends_on:
+    #   - redis
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Optional translation cache / rate limiter — uncomment to enable.
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   command: ["redis-server", "--appendonly", "yes"]
+  #   volumes:
+  #     - redis_data:/data
+
+  # Optional pgAdmin — only useful if you point it at NeonDB. Bind to 127.0.0.1
+  # and SSH-tunnel rather than exposing publicly.
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-changeme}
+  #   ports:
+  #     - "127.0.0.1:5050:80"
+
+# volumes:
+#   redis_data:

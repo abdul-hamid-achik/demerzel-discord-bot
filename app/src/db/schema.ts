@@ -1,0 +1,85 @@
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
+
+export const userPreferences = pgTable("user_preferences", {
+  discordUserId: varchar("discord_user_id", { length: 32 }).primaryKey(),
+  primaryLanguage: varchar("primary_language", { length: 8 }).notNull(),
+  secondaryLanguages: text("secondary_languages")
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
+  autoTranslate: boolean("auto_translate").notNull().default(false),
+  showOriginal: boolean("show_original").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const messageIndex = pgTable(
+  "message_index",
+  {
+    discordMessageId: varchar("discord_message_id", { length: 32 }).primaryKey(),
+    channelId: varchar("channel_id", { length: 32 }).notNull(),
+    authorId: varchar("author_id", { length: 32 }).notNull(),
+    originalText: text("original_text").notNull(),
+    originalHash: varchar("original_hash", { length: 64 }).notNull(),
+    sourceLanguage: varchar("source_language", { length: 8 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    hashIdx: index("message_index_hash_idx").on(t.originalHash),
+    channelIdx: index("message_index_channel_idx").on(t.channelId),
+    authorIdx: index("message_index_author_idx").on(t.authorId),
+  }),
+);
+
+export const translationCache = pgTable(
+  "translation_cache",
+  {
+    originalHash: varchar("original_hash", { length: 64 }).notNull(),
+    sourceLanguage: varchar("source_language", { length: 8 }).notNull(),
+    targetLanguage: varchar("target_language", { length: 8 }).notNull(),
+    translatedText: text("translated_text").notNull(),
+    provider: varchar("provider", { length: 32 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.originalHash, t.sourceLanguage, t.targetLanguage] }),
+  }),
+);
+
+export const translationEvents = pgTable(
+  "translation_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    discordUserId: varchar("discord_user_id", { length: 32 }).notNull(),
+    discordMessageId: varchar("discord_message_id", { length: 32 }),
+    channelId: varchar("channel_id", { length: 32 }).notNull(),
+    sourceLanguage: varchar("source_language", { length: 8 }),
+    targetLanguage: varchar("target_language", { length: 8 }).notNull(),
+    eventType: varchar("event_type", { length: 32 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: index("translation_events_user_idx").on(t.discordUserId),
+    channelIdx: index("translation_events_channel_idx").on(t.channelId),
+    typeIdx: index("translation_events_type_idx").on(t.eventType),
+  }),
+);
+
+export type UserPreference = typeof userPreferences.$inferSelect;
+export type NewUserPreference = typeof userPreferences.$inferInsert;
+export type MessageIndexRow = typeof messageIndex.$inferSelect;
+export type NewMessageIndexRow = typeof messageIndex.$inferInsert;
+export type TranslationCacheRow = typeof translationCache.$inferSelect;
+export type NewTranslationCacheRow = typeof translationCache.$inferInsert;
+export type TranslationEvent = typeof translationEvents.$inferSelect;
+export type NewTranslationEvent = typeof translationEvents.$inferInsert;

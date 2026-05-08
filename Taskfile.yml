@@ -1,0 +1,142 @@
+version: "3"
+
+# Hermes Translator — task runner.
+# Install Task: https://taskfile.dev/installation/  (brew install go-task)
+# Run `task` to list available tasks.
+
+vars:
+  DROPLET_USER: '{{.DROPLET_USER | default "deploy"}}'
+  APP_REMOTE_DIR: /opt/hermes/app
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  # ───────────────── infra ─────────────────
+
+  infra:init:
+    desc: Install Pulumi deps and initialize the dev stack
+    dir: infra
+    cmds:
+      - bun install
+      - pulumi stack init dev || true
+
+  infra:preview:
+    desc: pulumi preview
+    dir: infra
+    cmds:
+      - pulumi preview
+
+  infra:up:
+    desc: Provision the DigitalOcean droplet
+    dir: infra
+    cmds:
+      - pulumi up
+
+  infra:destroy:
+    desc: Tear down the DigitalOcean droplet
+    dir: infra
+    prompt: This will destroy the droplet and lose all on-disk state. Continue?
+    cmds:
+      - pulumi destroy
+
+  infra:output:
+    desc: Print Pulumi stack outputs (droplet IP, ssh command, etc.)
+    dir: infra
+    cmds:
+      - pulumi stack output
+
+  # ───────────────── droplet ops ─────────────────
+
+  ssh:
+    desc: SSH to the droplet as the deploy user
+    cmds:
+      - |
+        IP=$(cd infra && pulumi stack output dropletIp)
+        ssh {{.DROPLET_USER}}@$IP
+
+  deploy:
+    desc: Rsync app/ to the droplet and bring up the compose stack
+    cmds:
+      - |
+        IP=$(cd infra && pulumi stack output dropletIp)
+        echo "Deploying to $IP..."
+        rsync -avz --delete \
+          --exclude node_modules --exclude .env \
+          app/ {{.DROPLET_USER}}@$IP:{{.APP_REMOTE_DIR}}/
+        scp app/.env {{.DROPLET_USER}}@$IP:{{.APP_REMOTE_DIR}}/.env 2>/dev/null \
+          || echo "warn: app/.env not found locally — copy it manually"
+        ssh {{.DROPLET_USER}}@$IP 'cd {{.APP_REMOTE_DIR}} && docker compose up -d --build'
+
+  remote:logs:
+    desc: Tail bot logs on the droplet
+    cmds:
+      - |
+        IP=$(cd infra && pulumi stack output dropletIp)
+        ssh {{.DROPLET_USER}}@$IP 'cd {{.APP_REMOTE_DIR}} && docker compose logs -f --tail=200'
+
+  remote:restart:
+    desc: Restart the bot container on the droplet
+    cmds:
+      - |
+        IP=$(cd infra && pulumi stack output dropletIp)
+        ssh {{.DROPLET_USER}}@$IP 'cd {{.APP_REMOTE_DIR}} && docker compose restart'
+
+  # ───────────────── local docker ─────────────────
+
+  compose:up:
+    desc: Run the app stack locally with Docker Compose
+    dir: app
+    cmds:
+      - docker compose up -d --build
+
+  compose:down:
+    desc: Stop the local app stack
+    dir: app
+    cmds:
+      - docker compose down
+
+  compose:logs:
+    desc: Tail local app logs
+    dir: app
+    cmds:
+      - docker compose logs -f --tail=200
+
+  # ───────────────── app ─────────────────
+
+  install:
+    desc: Install bot dependencies
+    dir: app
+    cmds:
+      - bun install
+
+  dev:
+    desc: Run the bot locally with hot-reload
+    dir: app
+    deps: [install]
+    cmds:
+      - bun run dev
+
+  lint:
+    desc: Type-check the bot
+    dir: app
+    deps: [install]
+    cmds:
+      - bun run lint
+
+  migrate:
+    desc: Generate and apply Drizzle migrations against DATABASE_URL
+    dir: app
+    deps: [install]
+    cmds:
+      - bun run db:generate
+      - bun run db:migrate
+
+  register:
+    desc: Register Discord slash commands
+    dir: app
+    deps: [install]
+    cmds:
+      - bun run register-commands
