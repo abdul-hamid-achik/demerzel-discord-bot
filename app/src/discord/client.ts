@@ -27,6 +27,11 @@ import {
   handleTranslateThreadSlash,
 } from "./handlers/translate-thread.js";
 import { handleReminder } from "./handlers/reminder.js";
+import { handleCmsMember } from "./handlers/cms-member.js";
+import { handleCmsOperation } from "./handlers/cms-operation.js";
+import { handleCmsEvent } from "./handlers/cms-event.js";
+import { handleCmsI18n } from "./handlers/cms-i18n.js";
+import { handleCmsContent } from "./handlers/cms-content.js";
 import { discordErrorDetails, NO_MENTIONS } from "./messages.js";
 import { startReminderScheduler } from "../reminders/scheduler.js";
 
@@ -126,6 +131,16 @@ export function buildClient(): Client {
             return await handleArchiveTranslations(interaction);
           case "reminder":
             return await handleReminder(interaction);
+          case "cms-member":
+            return await handleCmsMember(interaction);
+          case "cms-operation":
+            return await handleCmsOperation(interaction);
+          case "cms-event":
+            return await handleCmsEvent(interaction);
+          case "cms-i18n":
+            return await handleCmsI18n(interaction);
+          case "cms-content":
+            return await handleCmsContent(interaction);
         }
       }
       if (interaction.isMessageContextMenuCommand()) {

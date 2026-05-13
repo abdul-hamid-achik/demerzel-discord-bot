@@ -56,9 +56,6 @@ export function isFutureReminderTime(
 }
 
 export function formatReminderTime(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZoneName: "short",
-  }).format(date);
+  const timestamp = Math.floor(date.getTime() / 1000);
+  return `<t:${timestamp}:f> (<t:${timestamp}:R>)`;
 }

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { isFutureReminderTime, parseReminderTime } from "./time.ts";
+import {
+  formatReminderTime,
+  isFutureReminderTime,
+  parseReminderTime,
+} from "./time.ts";
 
 const NOW = new Date("2026-05-08T12:00:00.000Z");
 
@@ -36,5 +40,16 @@ describe("isFutureReminderTime", () => {
     expect(
       isFutureReminderTime(new Date("2026-05-08T12:00:10.000Z"), NOW),
     ).toBe(true);
+  });
+});
+
+describe("formatReminderTime", () => {
+  test("uses Discord timestamps so the client renders local time and relative time", () => {
+    const date = new Date("2026-05-10T00:00:00.000Z");
+    const timestamp = Math.floor(date.getTime() / 1000);
+
+    expect(formatReminderTime(date)).toBe(
+      `<t:${timestamp}:f> (<t:${timestamp}:R>)`,
+    );
   });
 });

@@ -75,6 +75,17 @@ cp app/.env.example app/.env
 # and the API key for whichever TRANSLATION_PROVIDER you choose.
 ```
 
+For StarWarrior CMS commands, also set:
+
+```bash
+VOID_API_BASE_URL=https://www.starwarrior.org/api
+VOID_API_KEY=<same value as BOT_API_KEY in the StarWarrior Void project>
+```
+
+`DATABASE_URL` is Demerzel's own Neon/Postgres database for translation state,
+preferences, and reminders. It is not the StarWarrior CMS database. CMS writes go
+through the Void API with the bearer key above.
+
 ## 5. Register slash commands
 
 ```bash

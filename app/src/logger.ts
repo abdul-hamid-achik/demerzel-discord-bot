@@ -11,24 +11,24 @@ const opts: LoggerOptions = isDev
     }
   : isTest
     ? { level: "silent" }
-  : {
-      level: config.LOG_LEVEL,
-      transport: {
-        targets: [
-          // 1 = stdout (so `docker compose logs` keeps working)
-          {
-            target: "pino/file",
-            level: config.LOG_LEVEL,
-            options: { destination: 1 },
-          },
-          // Persistent file so failures are inspectable after a crash/restart.
-          {
-            target: "pino/file",
-            level: config.LOG_LEVEL,
-            options: { destination: "/app/logs/bot.log", mkdir: true },
-          },
-        ],
-      },
-    };
+    : {
+        level: config.LOG_LEVEL,
+        transport: {
+          targets: [
+            // 1 = stdout (so `docker compose logs` keeps working)
+            {
+              target: "pino/file",
+              level: config.LOG_LEVEL,
+              options: { destination: 1 },
+            },
+            // Persistent file so failures are inspectable after a crash/restart.
+            {
+              target: "pino/file",
+              level: config.LOG_LEVEL,
+              options: { destination: "logs/bot.log", mkdir: true },
+            },
+          ],
+        },
+      };
 
 export const logger = pino(opts);

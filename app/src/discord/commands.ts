@@ -4,6 +4,8 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
+import { isCmsConfigured } from "../config.js";
+import { cmsSlashCommandJson } from "../cms/slash-commands.js";
 
 const LANGUAGE_CHOICES = [
   { name: "English", value: "en" },
@@ -183,4 +185,20 @@ export const contextMenus = [
     .setType(ApplicationCommandType.Message),
 ].map((c) => c.toJSON());
 
-export const allCommands = [...slashCommands, ...contextMenus];
+type CommandJson =
+  | (typeof slashCommands)[number]
+  | (typeof cmsSlashCommandJson)[number]
+  | (typeof contextMenus)[number];
+
+export function buildAllCommands(
+  options: { includeCms?: boolean } = {},
+): CommandJson[] {
+  const includeCms = options.includeCms ?? isCmsConfigured();
+  return [
+    ...slashCommands,
+    ...(includeCms ? cmsSlashCommandJson : []),
+    ...contextMenus,
+  ];
+}
+
+export const allCommands = buildAllCommands();
