@@ -37,11 +37,15 @@ describe("parseConfig", () => {
       VOID_API_BASE_URL: "",
       VOID_API_URL: "",
       VOID_API_KEY: "   ",
+      DEMERZEL_ANNOUNCEMENT_CHANNEL_ID: "",
+      DEMERZEL_RELEASE_ID: "   ",
     });
 
     expect(parsed.VOID_API_BASE_URL).toBeUndefined();
     expect(parsed.VOID_API_URL).toBeUndefined();
     expect(parsed.VOID_API_KEY).toBeUndefined();
+    expect(parsed.DEMERZEL_ANNOUNCEMENT_CHANNEL_ID).toBeUndefined();
+    expect(parsed.DEMERZEL_RELEASE_ID).toBeUndefined();
     expect(isCmsConfigured(parsed)).toBe(false);
   });
 

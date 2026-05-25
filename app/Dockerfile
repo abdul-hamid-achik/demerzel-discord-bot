@@ -10,6 +10,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
+COPY RELEASE_NOTES.md ./
 COPY src ./src
 RUN mkdir -p /app/logs && chown -R bun:bun /app/logs
 USER bun

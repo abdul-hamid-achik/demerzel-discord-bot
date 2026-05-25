@@ -12,7 +12,11 @@ import {
   type TranslateResult,
 } from "../translation/orchestrator.js";
 import { logger } from "../logger.js";
-import { NO_MENTIONS, sendDiscordChunks } from "../discord/messages.js";
+import {
+  isDiscordChunkTarget,
+  NO_MENTIONS,
+  sendDiscordChunks,
+} from "../discord/messages.js";
 import { effectiveCleanupMinutes, shouldCleanupThread } from "./cleanup.js";
 import { shouldAutoTranslate } from "./filters.js";
 
@@ -37,6 +41,44 @@ export interface IndexedMessage {
   originalText: string;
   originalHash: string;
   sourceLanguage: string;
+}
+
+export type AutoTranslateDelivery =
+  | "create-thread"
+  | "reply-in-thread"
+  | "unsupported";
+
+export function autoTranslateDeliveryForChannelType(
+  type: ChannelType,
+): AutoTranslateDelivery {
+  if (
+    type === ChannelType.GuildText ||
+    type === ChannelType.GuildAnnouncement
+  ) {
+    return "create-thread";
+  }
+
+  if (
+    type === ChannelType.PublicThread ||
+    type === ChannelType.PrivateThread ||
+    type === ChannelType.AnnouncementThread
+  ) {
+    return "reply-in-thread";
+  }
+
+  return "unsupported";
+}
+
+export function autoTranslateConfigChannelId(channel: {
+  id: string;
+  type: ChannelType;
+  parentId?: string | null;
+}): string | null {
+  const delivery = autoTranslateDeliveryForChannelType(channel.type);
+  if (delivery === "unsupported") return null;
+  return delivery === "reply-in-thread"
+    ? (channel.parentId ?? null)
+    : channel.id;
 }
 
 /**
@@ -210,9 +252,8 @@ export class BotAgent {
   }
 
   /**
-   * Auto-translation entry point: called for every message in a channel that
-   * has auto-translate enabled. Decides whether the message is worth
-   * translating, then posts a thread under it with one line per target lang.
+   * Auto-translation entry point. Top-level channel messages get a translation
+   * thread; messages already inside a thread get an in-thread translation reply.
    */
   async autoTranslateMessage(message: Message): Promise<void> {
     const ctx = {
@@ -220,6 +261,7 @@ export class BotAgent {
       channelId: message.channelId,
       authorId: message.author.id,
       contentLen: message.content?.length ?? 0,
+      channelType: message.channel.type,
     };
 
     if (!shouldAutoTranslate(message)) {
@@ -227,27 +269,50 @@ export class BotAgent {
       return;
     }
 
-    const setting = await channels.get(message.channelId);
-    if (!setting?.autoTranslate || setting.targetLanguages.length === 0) {
+    if (!message.inGuild()) {
       logger.debug(
-        { ...ctx, skip: "no-channel-config", hasSetting: !!setting },
+        { ...ctx, skip: "not-guild-message" },
         "auto-translate skipped",
       );
       return;
     }
 
-    if (
-      message.channel.type !== ChannelType.GuildText &&
-      message.channel.type !== ChannelType.GuildAnnouncement
-    ) {
+    const delivery = autoTranslateDeliveryForChannelType(message.channel.type);
+    if (delivery === "unsupported") {
       logger.info(
         { ...ctx, skip: "wrong-channel-type", type: message.channel.type },
-        "auto-translate skipped: channel doesn't support threads",
+        "auto-translate skipped: channel is unsupported",
       );
       return;
     }
 
-    if (message.hasThread) {
+    const configChannelId = autoTranslateConfigChannelId(message.channel);
+    if (!configChannelId) {
+      logger.info(
+        { ...ctx, skip: "missing-parent-channel", type: message.channel.type },
+        "auto-translate skipped: thread parent channel is unavailable",
+      );
+      return;
+    }
+
+    const setting = await channels.getEffectiveAutoTranslate({
+      channelId: configChannelId,
+      guildId: message.guildId,
+    });
+    if (!setting.autoTranslate || setting.targetLanguages.length === 0) {
+      logger.debug(
+        {
+          ...ctx,
+          skip: "disabled",
+          configChannelId,
+          isDefault: setting.isDefault,
+        },
+        "auto-translate skipped",
+      );
+      return;
+    }
+
+    if (delivery === "create-thread" && message.hasThread) {
       logger.debug(
         { ...ctx, skip: "already-has-thread" },
         "auto-translate skipped",
@@ -256,7 +321,7 @@ export class BotAgent {
     }
 
     logger.info(
-      { ...ctx, targets: setting.targetLanguages },
+      { ...ctx, targets: setting.targetLanguages, configChannelId, delivery },
       "auto-translating",
     );
 
@@ -272,7 +337,7 @@ export class BotAgent {
     // channel come first. Each user's primary language ends up nearest the
     // top — without dropping any of the configured targets.
     const targets = await preferences.rankByChannelActivity(
-      message.channelId,
+      setting.channelId,
       filtered,
     );
 
@@ -316,6 +381,27 @@ export class BotAgent {
     }
 
     try {
+      if (delivery === "reply-in-thread") {
+        if (!isDiscordChunkTarget(message.channel)) {
+          logger.info(
+            { ...ctx },
+            "auto-translate skipped: thread cannot receive messages",
+          );
+          return;
+        }
+
+        await sendDiscordChunks(message.channel, lines.join("\n"), {
+          operation: "auto-translate-thread-reply",
+          messageId: message.id,
+          channelId: message.channelId,
+        });
+        logger.info(
+          { ...ctx, lines: lines.length },
+          "auto-translate thread reply posted",
+        );
+        return;
+      }
+
       const thread = await message.startThread({
         name: `${this.flag(sourceLang)} → ${targets.map((t) => this.flag(t)).join(" ")}`.slice(
           0,
@@ -447,8 +533,19 @@ export class BotAgent {
    * cleaned up by their setTimeout but weren't (because the bot restarted).
    */
   async sweepStaleThreads(message: Message): Promise<void> {
-    const setting = await channels.get(message.channelId);
-    if (!setting?.autoTranslate) return;
+    if (!message.inGuild()) return;
+    if (
+      autoTranslateDeliveryForChannelType(message.channel.type) !==
+      "create-thread"
+    ) {
+      return;
+    }
+
+    const setting = await channels.getEffectiveAutoTranslate({
+      channelId: message.channelId,
+      guildId: message.guildId,
+    });
+    if (!setting.autoTranslate) return;
     const minutes = effectiveCleanupMinutes(setting.cleanupMinutes);
     if (minutes === 0) return;
 

@@ -1,6 +1,11 @@
 import OpenAI from "openai";
 import { config } from "../../config.js";
-import type { TranslateInput, TranslateOutput, TranslationProvider } from "./index.js";
+import { DEFAULT_TARGET_LANGUAGE_CODES } from "../lang-util.js";
+import type {
+  TranslateInput,
+  TranslateOutput,
+  TranslationProvider,
+} from "./index.js";
 
 interface OpenAIProviderOptions {
   client?: OpenAI;
@@ -17,7 +22,9 @@ export class OpenAIProvider implements TranslationProvider {
 
   constructor(options: OpenAIProviderOptions = {}) {
     if (!options.client && !config.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is required when TRANSLATION_PROVIDER=openai");
+      throw new Error(
+        "OPENAI_API_KEY is required when TRANSLATION_PROVIDER=openai",
+      );
     }
     this.client =
       options.client ??
@@ -48,7 +55,8 @@ export class OpenAIProvider implements TranslationProvider {
       ],
     });
 
-    const translatedText = completion.choices[0]?.message?.content?.trim() ?? "";
+    const translatedText =
+      completion.choices[0]?.message?.content?.trim() ?? "";
     return {
       translatedText,
       detectedSourceLanguage: input.sourceLanguage,
@@ -62,13 +70,17 @@ export class OpenAIProvider implements TranslationProvider {
       messages: [
         {
           role: "system",
-          content:
-            "Identify the language of the text. Respond with only the ISO 639-1 code (e.g. en, es, it, pt). If uncertain, reply 'und'.",
+          content: [
+            "Identify the language of the text.",
+            `Respond with only an ISO 639-1 code such as ${DEFAULT_TARGET_LANGUAGE_CODES}.`,
+            "If uncertain, reply 'und'.",
+          ].join(" "),
         },
         { role: "user", content: text },
       ],
     });
-    const code = completion.choices[0]?.message?.content?.trim().toLowerCase() ?? "und";
+    const code =
+      completion.choices[0]?.message?.content?.trim().toLowerCase() ?? "und";
     return code.slice(0, 3);
   }
 }

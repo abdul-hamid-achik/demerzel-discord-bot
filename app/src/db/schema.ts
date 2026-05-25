@@ -137,6 +137,16 @@ export const reminders = pgTable(
   }),
 );
 
+export const releaseAnnouncements = pgTable("release_announcements", {
+  releaseId: varchar("release_id", { length: 128 }).primaryKey(),
+  channelId: varchar("channel_id", { length: 32 }).notNull(),
+  messageId: varchar("message_id", { length: 32 }),
+  notesHash: varchar("notes_hash", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type UserPreference = typeof userPreferences.$inferSelect;
 export type NewUserPreference = typeof userPreferences.$inferInsert;
 export type MessageIndexRow = typeof messageIndex.$inferSelect;
@@ -149,3 +159,5 @@ export type ChannelSetting = typeof channelSettings.$inferSelect;
 export type NewChannelSetting = typeof channelSettings.$inferInsert;
 export type Reminder = typeof reminders.$inferSelect;
 export type NewReminder = typeof reminders.$inferInsert;
+export type ReleaseAnnouncement = typeof releaseAnnouncements.$inferSelect;
+export type NewReleaseAnnouncement = typeof releaseAnnouncements.$inferInsert;

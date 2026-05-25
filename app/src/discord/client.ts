@@ -34,6 +34,7 @@ import { handleCmsI18n } from "./handlers/cms-i18n.js";
 import { handleCmsContent } from "./handlers/cms-content.js";
 import { discordErrorDetails, NO_MENTIONS } from "./messages.js";
 import { startReminderScheduler } from "../reminders/scheduler.js";
+import { announceReleaseIfNeeded } from "../announcements/release.js";
 
 function channelName(channel: Channel): string {
   return "name" in channel && typeof channel.name === "string"
@@ -55,6 +56,9 @@ export function buildClient(): Client {
   client.once(Events.ClientReady, (c) => {
     logger.info({ user: c.user.tag }, "discord client ready");
     startReminderScheduler(client);
+    void announceReleaseIfNeeded(client).catch((err) => {
+      logger.warn({ err }, "release announcement failed");
+    });
   });
 
   client.on(Events.Error, (err) => {

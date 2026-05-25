@@ -6,17 +6,20 @@ import {
 } from "discord.js";
 import { isCmsConfigured } from "../config.js";
 import { cmsSlashCommandJson } from "../cms/slash-commands.js";
+import { DEFAULT_TARGET_LANGUAGE_CODES } from "../translation/lang-util.js";
 
 const LANGUAGE_CHOICES = [
   { name: "English", value: "en" },
   { name: "Español", value: "es" },
   { name: "Italiano", value: "it" },
-  { name: "Português", value: "pt" },
+  { name: "Português (Brasil)", value: "pt" },
   { name: "Français", value: "fr" },
   { name: "Deutsch", value: "de" },
   { name: "Polski", value: "pl" },
+  { name: "Русский (Russian)", value: "ru" },
   { name: "日本語 (Japanese)", value: "ja" },
   { name: "한국어 (Korean)", value: "ko" },
+  { name: "中文 (Chinese)", value: "zh" },
 ];
 
 export const slashCommands = [
@@ -63,7 +66,9 @@ export const slashCommands = [
     .addStringOption((opt) =>
       opt
         .setName("languages")
-        .setDescription("Comma-separated language codes (default: en,es,it,pt)")
+        .setDescription(
+          `Comma-separated language codes (default: ${DEFAULT_TARGET_LANGUAGE_CODES})`,
+        )
         .setRequired(false),
     ),
 
@@ -149,7 +154,7 @@ export const slashCommands = [
           opt
             .setName("languages")
             .setDescription(
-              "Comma-separated language codes (default: en,es,it,pt)",
+              `Comma-separated language codes (default: ${DEFAULT_TARGET_LANGUAGE_CODES})`,
             )
             .setRequired(false),
         )
@@ -168,6 +173,11 @@ export const slashCommands = [
       sub
         .setName("disable")
         .setDescription("Stop auto-translating in this channel"),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("reset")
+        .setDescription("Remove this channel override and use the default"),
     )
     .addSubcommand((sub) =>
       sub

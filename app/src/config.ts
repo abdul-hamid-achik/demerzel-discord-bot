@@ -29,6 +29,10 @@ export const schema = z.object({
   GOOGLE_TRANSLATE_API_KEY: optionalString,
   TAVILY_API_KEY: optionalString,
   REDIS_URL: optionalString,
+  DEMERZEL_ANNOUNCEMENT_CHANNEL_ID: optionalString,
+  DEMERZEL_RELEASE_ID: optionalString,
+  DEMERZEL_RELEASE_NOTES: optionalString,
+  DEMERZEL_RELEASE_NOTES_FILE: optionalString,
   // StarWarrior CMS via Void API. CMS commands (`/cms-*`) are skipped if
   // VOID_API_BASE_URL/VOID_API_URL or VOID_API_KEY is unset, so the bot still
   // runs as a pure translator.

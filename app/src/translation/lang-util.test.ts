@@ -57,6 +57,10 @@ describe("parseLanguages", () => {
 });
 
 describe("constants", () => {
+  test("DEFAULT_TARGET_LANGUAGES includes every supported language", () => {
+    expect(DEFAULT_TARGET_LANGUAGES).toEqual([...SUPPORTED_LANGUAGES]);
+  });
+
   test("DEFAULT_TARGET_LANGUAGES are all supported", () => {
     for (const code of DEFAULT_TARGET_LANGUAGES) {
       expect(isSupportedLanguage(code)).toBe(true);
