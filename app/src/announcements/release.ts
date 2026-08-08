@@ -1,8 +1,4 @@
-import {
-  ChannelType,
-  type Client,
-  type Message,
-} from "discord.js";
+import { type Client, type Message } from "discord.js";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -14,9 +10,12 @@ import { releaseAnnouncements } from "../db/schema.js";
 import { logger } from "../logger.js";
 import {
   discordErrorDetails,
-  isDiscordChunkTarget,
   NO_MENTIONS,
 } from "../discord/messages.js";
+import {
+  isDefaultHomeChannel,
+  resolveHomeChannel,
+} from "../discord/home-channel.js";
 
 const DEFAULT_RELEASE_NOTES_FILE = "RELEASE_NOTES.md";
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -54,19 +53,7 @@ export function releaseAnnouncementMessage(args: {
   ].join("\n");
 }
 
-export function isDefaultAnnouncementChannel(
-  channel: { type: ChannelType; name: string } | null,
-): boolean {
-  if (!channel) return false;
-  if (
-    channel.type !== ChannelType.GuildText &&
-    channel.type !== ChannelType.GuildAnnouncement
-  ) {
-    return false;
-  }
-
-  return channel.name.toLowerCase().includes("home");
-}
+export const isDefaultAnnouncementChannel = isDefaultHomeChannel;
 
 async function readPackageVersion(): Promise<string> {
   const raw = await readFile(resolve(APP_DIR, "package.json"), "utf8");
@@ -105,57 +92,11 @@ async function releaseMetadata(): Promise<ReleaseMetadata | null> {
 }
 
 async function resolveAnnouncementChannel(client: Client) {
-  if (config.DEMERZEL_ANNOUNCEMENT_CHANNEL_ID) {
-    const channel = await client.channels
-      .fetch(config.DEMERZEL_ANNOUNCEMENT_CHANNEL_ID)
-      .catch((err) => {
-        logger.warn(
-          {
-            err,
-            discord: discordErrorDetails(err),
-            channelId: config.DEMERZEL_ANNOUNCEMENT_CHANNEL_ID,
-          },
-          "configured announcement channel fetch failed",
-        );
-        return null;
-      });
-
-    return channel && isDiscordChunkTarget(channel) ? channel : null;
-  }
-
-  if (!config.DISCORD_GUILD_ID) return null;
-
-  const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID).catch((err) => {
-    logger.warn(
-      {
-        err,
-        discord: discordErrorDetails(err),
-        guildId: config.DISCORD_GUILD_ID,
-      },
-      "announcement guild fetch failed",
-    );
-    return null;
+  return resolveHomeChannel(client, {
+    channelId: config.DEMERZEL_ANNOUNCEMENT_CHANNEL_ID,
+    guildId: config.DISCORD_GUILD_ID,
+    logLabel: "announcement",
   });
-  if (!guild) return null;
-
-  const channels = await guild.channels.fetch().catch((err) => {
-    logger.warn(
-      {
-        err,
-        discord: discordErrorDetails(err),
-        guildId: config.DISCORD_GUILD_ID,
-      },
-      "announcement channel list fetch failed",
-    );
-    return null;
-  });
-  if (!channels) return null;
-
-  const home = channels.find((channel) =>
-    isDefaultAnnouncementChannel(channel),
-  );
-
-  return home && isDiscordChunkTarget(home) ? home : null;
 }
 
 async function reserveReleaseAnnouncement(

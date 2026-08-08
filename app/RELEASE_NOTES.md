@@ -1,6 +1,4 @@
 What's new in Demerzel:
-- Auto-translate now defaults on for server text channels.
-- Default translation targets now include every supported language.
-- Messages inside threads now get translation replies in the same thread.
-- Demerzel conversations now continue in dedicated threads with multilingual answer summaries.
-- Auto-translate channel overrides can now be reset back to the server default.
+- Release announcements now use only the current release notes, so old changes are not repeated on every deploy.
+- Translation threads now auto-archive reliably after Demerzel posts translations, without treating the original message as a human reply.
+- Admins can archive translation threads across the whole server with Demerzel or `/archive-translations scope:server`.

@@ -35,6 +35,10 @@ import { handleCmsContent } from "./handlers/cms-content.js";
 import { discordErrorDetails, NO_MENTIONS } from "./messages.js";
 import { startReminderScheduler } from "../reminders/scheduler.js";
 import { announceReleaseIfNeeded } from "../announcements/release.js";
+import {
+  welcomeFromUserJoinSystemMessage,
+  welcomeGuildMember,
+} from "../welcome/engine.js";
 
 function channelName(channel: Channel): string {
   return "name" in channel && typeof channel.name === "string"
@@ -42,20 +46,71 @@ function channelName(channel: Channel): string {
     : "channel";
 }
 
-export function buildClient(): Client {
+// Keep recovery sweeps aligned with reminder reconciliation so an idle Neon
+// compute gets one bounded wake window instead of a database read every
+// fifteen minutes. Per-thread timers still handle normal cleanup promptly.
+const TRANSLATION_THREAD_SWEEP_INTERVAL_MS = 6 * 60 * 60_000;
+
+async function sweepGuildTranslationThreads(
+  client: Client,
+  reason: "startup" | "interval",
+): Promise<void> {
+  let archived = 0;
+  let kept = 0;
+
+  for (const guild of client.guilds.cache.values()) {
+    const result = await agent.sweepStaleTranslationThreadsInGuild(guild);
+    archived += result.archived;
+    kept += result.kept;
+  }
+
+  if (archived > 0) {
+    logger.info(
+      { archived, kept, guilds: client.guilds.cache.size, reason },
+      "stale translation thread sweep archived threads",
+    );
+  }
+}
+
+function startTranslationThreadSweeper(client: Client): void {
+  void sweepGuildTranslationThreads(client, "startup").catch((err) => {
+    logger.warn({ err }, "startup translation thread sweep failed");
+  });
+
+  setInterval(() => {
+    void sweepGuildTranslationThreads(client, "interval").catch((err) => {
+      logger.warn({ err }, "periodic translation thread sweep failed");
+    });
+  }, TRANSLATION_THREAD_SWEEP_INTERVAL_MS).unref?.();
+}
+
+export function isDisallowedIntentError(err: unknown): boolean {
+  return err instanceof Error && err.message === "Used disallowed intents";
+}
+
+export function buildClient(
+  options: { welcomeEnabled?: boolean } = {},
+): Client {
+  const welcomeEnabled = options.welcomeEnabled ?? true;
+  const intents = [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.MessageContent,
+  ];
+  if (welcomeEnabled) {
+    intents.push(GatewayIntentBits.GuildMembers);
+  }
+
   const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.GuildMessageReactions,
-      GatewayIntentBits.MessageContent,
-    ],
+    intents,
     partials: [Partials.Message, Partials.Channel, Partials.Reaction],
   });
 
   client.once(Events.ClientReady, (c) => {
     logger.info({ user: c.user.tag }, "discord client ready");
     startReminderScheduler(client);
+    startTranslationThreadSweeper(client);
     void announceReleaseIfNeeded(client).catch((err) => {
       logger.warn({ err }, "release announcement failed");
     });
@@ -69,6 +124,18 @@ export function buildClient(): Client {
   });
 
   client.on(Events.ShardError, (err, shardId) => {
+    if (welcomeEnabled && isDisallowedIntentError(err)) {
+      logger.warn(
+        {
+          err,
+          discord: discordErrorDetails(err),
+          shardId,
+        },
+        "discord rejected Server Members Intent; retrying without welcomes",
+      );
+      return;
+    }
+
     logger.error(
       { err, discord: discordErrorDetails(err), shardId },
       "discord shard error",
@@ -78,6 +145,24 @@ export function buildClient(): Client {
   client.on(Events.Warn, (warning) => {
     logger.warn({ warning }, "discord client warning");
   });
+
+  if (welcomeEnabled) {
+    client.on(Events.GuildMemberAdd, async (member) => {
+      try {
+        await welcomeGuildMember(member);
+      } catch (err) {
+        logger.error(
+          {
+            err,
+            discord: discordErrorDetails(err),
+            guildId: member.guild.id,
+            memberId: member.id,
+          },
+          "guild member welcome handler failed",
+        );
+      }
+    });
+  }
 
   client.rest.on(RESTEvents.RateLimited, (data) => {
     logger.warn(
@@ -235,6 +320,11 @@ export function buildClient(): Client {
   // quiet channels don't pay DB/language-detection cost on every message.
   client.on(Events.MessageCreate, async (message: Message) => {
     try {
+      if (!welcomeEnabled) {
+        const handledWelcome = await welcomeFromUserJoinSystemMessage(message);
+        if (handledWelcome) return;
+      }
+
       if (message.author.bot) return;
       logger.info(
         {
@@ -287,7 +377,21 @@ export function buildClient(): Client {
 }
 
 export async function startClient(): Promise<Client> {
-  const client = buildClient();
-  await client.login(config.DISCORD_TOKEN);
-  return client;
+  const client = buildClient({ welcomeEnabled: true });
+  try {
+    await client.login(config.DISCORD_TOKEN);
+    return client;
+  } catch (err) {
+    await client.destroy();
+    if (!isDisallowedIntentError(err)) throw err;
+
+    logger.warn(
+      { err, discord: discordErrorDetails(err) },
+      "welcome startup disabled: enable Server Members Intent in Discord Developer Portal",
+    );
+
+    const fallbackClient = buildClient({ welcomeEnabled: false });
+    await fallbackClient.login(config.DISCORD_TOKEN);
+    return fallbackClient;
+  }
 }

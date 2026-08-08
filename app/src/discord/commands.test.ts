@@ -105,4 +105,23 @@ describe("buildAllCommands", () => {
     expect(languages?.description).toContain(DEFAULT_TARGET_LANGUAGE_CODES);
     expect(reset?.description).toContain("default");
   });
+
+  test("archive translations can target the current channel or entire server", () => {
+    const commands = buildAllCommands({ includeCms: false }) as Array<{
+      name: string;
+      options?: Array<{
+        name: string;
+        choices?: Array<{ name: string; value: string }>;
+      }>;
+    }>;
+    const archive = commands.find(
+      (command) => command.name === "archive-translations",
+    );
+    const scope = archive?.options?.find((option) => option.name === "scope");
+
+    expect(scope?.choices?.map((choice) => choice.value)).toEqual([
+      "channel",
+      "server",
+    ]);
+  });
 });

@@ -18,6 +18,7 @@ describe("parseConfig", () => {
     expect(parsed.OPENAI_CHAT_MODEL).toBe(DEFAULT_OPENAI_MODEL);
     expect(parsed.OPENAI_TRANSLATION_MODEL).toBe(DEFAULT_OPENAI_MODEL);
     expect(parsed.OPENAI_CHAT_MODEL).toBe("gpt-5.4-nano");
+    expect(parsed.DEMERZEL_ONBOARDING_ACCESS_SCOPE).toBe("all_text");
   });
 
   test("allows chat and translation models to be overridden independently", () => {
@@ -38,6 +39,12 @@ describe("parseConfig", () => {
       VOID_API_URL: "",
       VOID_API_KEY: "   ",
       DEMERZEL_ANNOUNCEMENT_CHANNEL_ID: "",
+      DEMERZEL_WELCOME_CHANNEL_ID: "   ",
+      DEMERZEL_ONBOARDING_ACCESS_SCOPE: "",
+      DEMERZEL_ONBOARDING_CHANNEL_IDS: "",
+      DEMERZEL_ONBOARDING_CATEGORY_ID: "   ",
+      DEMERZEL_ONBOARDING_EXCLUDED_CHANNEL_IDS: "",
+      DEMERZEL_ONBOARDING_EXCLUDED_CATEGORY_IDS: "   ",
       DEMERZEL_RELEASE_ID: "   ",
     });
 
@@ -45,8 +52,36 @@ describe("parseConfig", () => {
     expect(parsed.VOID_API_URL).toBeUndefined();
     expect(parsed.VOID_API_KEY).toBeUndefined();
     expect(parsed.DEMERZEL_ANNOUNCEMENT_CHANNEL_ID).toBeUndefined();
+    expect(parsed.DEMERZEL_WELCOME_CHANNEL_ID).toBeUndefined();
+    expect(parsed.DEMERZEL_ONBOARDING_ACCESS_SCOPE).toBe("all_text");
+    expect(parsed.DEMERZEL_ONBOARDING_CHANNEL_IDS).toBeUndefined();
+    expect(parsed.DEMERZEL_ONBOARDING_CATEGORY_ID).toBeUndefined();
+    expect(parsed.DEMERZEL_ONBOARDING_EXCLUDED_CHANNEL_IDS).toBeUndefined();
+    expect(parsed.DEMERZEL_ONBOARDING_EXCLUDED_CATEGORY_IDS).toBeUndefined();
     expect(parsed.DEMERZEL_RELEASE_ID).toBeUndefined();
     expect(isCmsConfigured(parsed)).toBe(false);
+  });
+
+  test("accepts configured onboarding access scope", () => {
+    const parsed = parseConfig({
+      ...baseEnv,
+      DEMERZEL_ONBOARDING_ACCESS_SCOPE: "configured",
+      DEMERZEL_ONBOARDING_EXCLUDED_CHANNEL_IDS: "admin,staff",
+      DEMERZEL_ONBOARDING_EXCLUDED_CATEGORY_IDS: "private",
+    });
+
+    expect(parsed.DEMERZEL_ONBOARDING_ACCESS_SCOPE).toBe("configured");
+    expect(parsed.DEMERZEL_ONBOARDING_EXCLUDED_CHANNEL_IDS).toBe("admin,staff");
+    expect(parsed.DEMERZEL_ONBOARDING_EXCLUDED_CATEGORY_IDS).toBe("private");
+  });
+
+  test("rejects unknown onboarding access scopes", () => {
+    expect(() =>
+      parseConfig({
+        ...baseEnv,
+        DEMERZEL_ONBOARDING_ACCESS_SCOPE: "everything",
+      }),
+    ).toThrow();
   });
 
   test("rejects a non-URL CMS base endpoint", () => {

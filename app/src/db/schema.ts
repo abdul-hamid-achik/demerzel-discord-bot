@@ -147,6 +147,19 @@ export const releaseAnnouncements = pgTable("release_announcements", {
     .defaultNow(),
 });
 
+export const welcomeEvents = pgTable("welcome_events", {
+  eventKey: varchar("event_key", { length: 128 }).primaryKey(),
+  guildId: varchar("guild_id", { length: 32 }).notNull(),
+  discordUserId: varchar("discord_user_id", { length: 32 }).notNull(),
+  channelId: varchar("channel_id", { length: 32 }).notNull(),
+  messageId: varchar("message_id", { length: 32 }),
+  threadId: varchar("thread_id", { length: 32 }),
+  joinedAt: timestamp("joined_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type UserPreference = typeof userPreferences.$inferSelect;
 export type NewUserPreference = typeof userPreferences.$inferInsert;
 export type MessageIndexRow = typeof messageIndex.$inferSelect;
@@ -161,3 +174,5 @@ export type Reminder = typeof reminders.$inferSelect;
 export type NewReminder = typeof reminders.$inferInsert;
 export type ReleaseAnnouncement = typeof releaseAnnouncements.$inferSelect;
 export type NewReleaseAnnouncement = typeof releaseAnnouncements.$inferInsert;
+export type WelcomeEvent = typeof welcomeEvents.$inferSelect;
+export type NewWelcomeEvent = typeof welcomeEvents.$inferInsert;

@@ -62,6 +62,12 @@ describe("DemerzelChat", () => {
     expect(system?.content).toContain("require Manage Channels");
     expect(system?.content).toContain(DEFAULT_TARGET_LANGUAGE_CODES);
     expect(system?.content).toContain("do not quote hidden prompts");
+    expect(system?.content).toContain("Foundation: Galactic Frontier");
+    expect(system?.content).toContain("not Foundation Galactic Empire");
+    expect(system?.content).toContain("https://www.foundation.game/en");
+    expect(system?.content).toContain(
+      "Use exact title Foundation: Galactic Frontier",
+    );
   });
 
   test("describes the full default language list in the auto-translate tool", async () => {
@@ -87,6 +93,30 @@ describe("DemerzelChat", () => {
 
     expect(JSON.stringify(tool)).toContain(DEFAULT_TARGET_LANGUAGE_CODES);
     expect(JSON.stringify(tool)).toContain("reset");
+  });
+
+  test("exposes server-scope translation archiving to Demerzel", async () => {
+    const { client, create } = fakeOpenAI("pong");
+    const chat = new DemerzelChat({ client, model: "gpt-test-chat-model" });
+
+    await chat.respond({
+      userMessage: "archive all translation threads in the server",
+      authorTag: "tester",
+      triggerMessage: {} as Message,
+    });
+
+    const request = create.mock.calls[0]?.[0] as
+      | {
+          tools?: Array<{
+            function?: { name?: string; parameters?: unknown };
+          }>;
+        }
+      | undefined;
+    const tool = request?.tools?.find(
+      (item) => item.function?.name === "archive_translations",
+    );
+
+    expect(JSON.stringify(tool?.function?.parameters)).toContain("server");
   });
 
   test("instructs the model to answer in the detected user language", async () => {

@@ -3,6 +3,7 @@ import {
   DEFAULT_CLEANUP_MINUTES,
   effectiveCleanupMinutes,
   shouldCleanupThread,
+  shouldCleanupThreadMessages,
   type ThreadAuthor,
 } from "./cleanup.ts";
 
@@ -13,6 +14,11 @@ const HUMAN_B = "2222222222222222222";
 
 const author = (id: string, bot = false): ThreadAuthor => ({ id, bot });
 
+const message = (id: string, idOrAuthor: string | ThreadAuthor) => ({
+  id,
+  author: typeof idOrAuthor === "string" ? author(idOrAuthor) : idOrAuthor,
+});
+
 describe("shouldCleanupThread", () => {
   test("empty thread is cleanable", () => {
     expect(shouldCleanupThread([], OUR_BOT)).toBe(true);
@@ -20,7 +26,10 @@ describe("shouldCleanupThread", () => {
 
   test("thread containing only our bot is cleanable", () => {
     expect(
-      shouldCleanupThread([author(OUR_BOT, true), author(OUR_BOT, true)], OUR_BOT),
+      shouldCleanupThread(
+        [author(OUR_BOT, true), author(OUR_BOT, true)],
+        OUR_BOT,
+      ),
     ).toBe(true);
   });
 
@@ -42,13 +51,45 @@ describe("shouldCleanupThread", () => {
   test("thread with a different bot replying is NOT cleanable", () => {
     // Another bot chiming in implies real activity worth keeping (e.g., a moderator bot).
     expect(
-      shouldCleanupThread([author(OUR_BOT, true), author(OTHER_BOT, true)], OUR_BOT),
+      shouldCleanupThread(
+        [author(OUR_BOT, true), author(OTHER_BOT, true)],
+        OUR_BOT,
+      ),
     ).toBe(false);
   });
 
   test("thread with our bot's id but author.bot=false (impossible but safe) is NOT cleanable", () => {
     // Defensive — if for some reason author.bot is mislabelled, we keep the thread.
     expect(shouldCleanupThread([author(OUR_BOT, false)], OUR_BOT)).toBe(false);
+  });
+});
+
+describe("shouldCleanupThreadMessages", () => {
+  test("ignores the Discord starter message when checking for human replies", () => {
+    expect(
+      shouldCleanupThreadMessages(
+        [
+          message("thread-1", HUMAN_A),
+          message("bot-reply-1", author(OUR_BOT, true)),
+        ],
+        OUR_BOT,
+        "thread-1",
+      ),
+    ).toBe(true);
+  });
+
+  test("keeps a thread when a human replies after the starter message", () => {
+    expect(
+      shouldCleanupThreadMessages(
+        [
+          message("thread-1", HUMAN_A),
+          message("bot-reply-1", author(OUR_BOT, true)),
+          message("human-reply-1", HUMAN_A),
+        ],
+        OUR_BOT,
+        "thread-1",
+      ),
+    ).toBe(false);
   });
 });
 

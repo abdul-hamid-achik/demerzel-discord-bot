@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { reminders, type NewReminder, type Reminder } from "../db/schema.js";
+import { notifyReminderScheduleChanged } from "./events.js";
 
 export type ReminderDeliveryTarget = "dm" | "channel";
 export type ReminderStatus =
@@ -27,6 +28,11 @@ export function shortReminderId(id: string): string {
 }
 
 export class ReminderEngine {
+  constructor(
+    private readonly database: typeof db = db,
+    private readonly scheduleChanged: () => void = notifyReminderScheduleChanged,
+  ) {}
+
   async create(input: CreateReminderInput): Promise<Reminder> {
     const pending = await this.pendingCountForUser(input.creatorId);
     if (pending >= MAX_PENDING_PER_USER) {
@@ -46,12 +52,16 @@ export class ReminderEngine {
       status: "pending",
     };
 
-    const [row] = await db.insert(reminders).values(values).returning();
+    const [row] = await this.database
+      .insert(reminders)
+      .values(values)
+      .returning();
+    this.scheduleChanged();
     return row!;
   }
 
   async pendingCountForUser(creatorId: string): Promise<number> {
-    const [row] = await db
+    const [row] = await this.database
       .select({ count: sql<number>`count(*)::int` })
       .from(reminders)
       .where(
@@ -64,7 +74,7 @@ export class ReminderEngine {
   }
 
   async listPendingForUser(creatorId: string, limit = 10): Promise<Reminder[]> {
-    return db
+    return this.database
       .select()
       .from(reminders)
       .where(
@@ -78,7 +88,7 @@ export class ReminderEngine {
   }
 
   async listRecentForUser(creatorId: string, limit = 10): Promise<Reminder[]> {
-    return db
+    return this.database
       .select()
       .from(reminders)
       .where(eq(reminders.creatorId, creatorId))
@@ -100,19 +110,20 @@ export class ReminderEngine {
     if (matches.length > 1) return { status: "ambiguous", matches };
 
     const target = matches[0]!;
-    const [updated] = await db
+    const [updated] = await this.database
       .update(reminders)
       .set({ status: "cancelled", updatedAt: sql`now()` })
       .where(and(eq(reminders.id, target.id), eq(reminders.status, "pending")))
       .returning();
 
-    return updated
-      ? { status: "cancelled", reminder: updated }
-      : { status: "not_found" };
+    if (!updated) return { status: "not_found" };
+
+    this.scheduleChanged();
+    return { status: "cancelled", reminder: updated };
   }
 
   async claimDue(now = new Date(), limit = 10): Promise<Reminder[]> {
-    const candidates = await db
+    const candidates = await this.database
       .select()
       .from(reminders)
       .where(and(eq(reminders.status, "pending"), lte(reminders.remindAt, now)))
@@ -121,7 +132,7 @@ export class ReminderEngine {
 
     const claimed: Reminder[] = [];
     for (const candidate of candidates) {
-      const [row] = await db
+      const [row] = await this.database
         .update(reminders)
         .set({ status: "sending", updatedAt: sql`now()` })
         .where(
@@ -134,8 +145,39 @@ export class ReminderEngine {
     return claimed;
   }
 
+  async nextPendingAt(): Promise<Date | null> {
+    const [row] = await this.database
+      .select({ remindAt: reminders.remindAt })
+      .from(reminders)
+      .where(eq(reminders.status, "pending"))
+      .orderBy(asc(reminders.remindAt))
+      .limit(1);
+    return row?.remindAt ?? null;
+  }
+
+  async nextSendingUpdatedAt(): Promise<Date | null> {
+    const [row] = await this.database
+      .select({ updatedAt: reminders.updatedAt })
+      .from(reminders)
+      .where(eq(reminders.status, "sending"))
+      .orderBy(asc(reminders.updatedAt))
+      .limit(1);
+    return row?.updatedAt ?? null;
+  }
+
+  async recoverStaleSending(cutoff: Date): Promise<number> {
+    const rows = await this.database
+      .update(reminders)
+      .set({ status: "pending", updatedAt: sql`now()` })
+      .where(
+        and(eq(reminders.status, "sending"), lte(reminders.updatedAt, cutoff)),
+      )
+      .returning({ id: reminders.id });
+    return rows.length;
+  }
+
   async markSent(id: string): Promise<void> {
-    await db
+    await this.database
       .update(reminders)
       .set({
         status: "sent",
@@ -147,7 +189,7 @@ export class ReminderEngine {
   }
 
   async markFailed(id: string, reason: string): Promise<void> {
-    await db
+    await this.database
       .update(reminders)
       .set({
         status: "failed",

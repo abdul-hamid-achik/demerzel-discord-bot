@@ -28,6 +28,31 @@ export async function handleArchiveTranslations(
     return;
   }
 
+  const force = interaction.options.getBoolean("force") ?? false;
+  const scope = interaction.options.getString("scope") ?? "channel";
+
+  if (scope === "server") {
+    const guild = interaction.guild;
+    if (!guild) {
+      await interaction.reply({
+        content: "I could not resolve this server.",
+        flags: MessageFlags.Ephemeral,
+        allowedMentions: NO_MENTIONS,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const { archived, kept } = await agent.archiveBotThreadsInGuild(guild, {
+      force,
+    });
+    await interaction.editReply({
+      content: archiveSummary({ archived, kept, force, scope }),
+      allowedMentions: NO_MENTIONS,
+    });
+    return;
+  }
+
   const channel = interaction.channel;
   if (
     !channel ||
@@ -42,23 +67,31 @@ export async function handleArchiveTranslations(
     return;
   }
 
-  const force = interaction.options.getBoolean("force") ?? false;
-
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const { archived, kept } = await agent.archiveBotThreadsInChannel(channel, {
     force,
   });
 
-  const lines = [
-    `Archived **${archived}** translation thread${archived === 1 ? "" : "s"}.`,
-  ];
-  if (kept > 0 && !force) {
-    lines.push(
-      `Kept **${kept}** with replies — pass \`force:true\` to archive those too.`,
-    );
-  }
   await interaction.editReply({
-    content: lines.join("\n"),
+    content: archiveSummary({ archived, kept, force, scope }),
     allowedMentions: NO_MENTIONS,
   });
+}
+
+function archiveSummary(args: {
+  archived: number;
+  kept: number;
+  force: boolean;
+  scope: string;
+}): string {
+  const target = args.scope === "server" ? "in this server" : "in this channel";
+  const lines = [
+    `Archived **${args.archived}** translation thread${args.archived === 1 ? "" : "s"} ${target}.`,
+  ];
+  if (args.kept > 0 && !args.force) {
+    lines.push(
+      `Kept **${args.kept}** with replies — pass \`force:true\` to archive those too.`,
+    );
+  }
+  return lines.join("\n");
 }

@@ -1,4 +1,9 @@
-import { ChannelType, type AnyThreadChannel, type Message } from "discord.js";
+import {
+  ChannelType,
+  type AnyThreadChannel,
+  type Guild,
+  type Message,
+} from "discord.js";
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { messageIndex, type NewTranslationEvent } from "../db/schema.js";
@@ -17,7 +22,10 @@ import {
   NO_MENTIONS,
   sendDiscordChunks,
 } from "../discord/messages.js";
-import { effectiveCleanupMinutes, shouldCleanupThread } from "./cleanup.js";
+import {
+  effectiveCleanupMinutes,
+  shouldCleanupThreadMessages,
+} from "./cleanup.js";
 import { shouldAutoTranslate } from "./filters.js";
 
 const FLAGS: Record<string, string> = {
@@ -32,7 +40,21 @@ const FLAGS: Record<string, string> = {
   ja: "🇯🇵",
   ko: "🇰🇷",
   zh: "🇨🇳",
+  ar: "🇸🇦",
 };
+
+const MANUAL_TRANSLATION_THREAD_PREFIX = "Translations · ";
+const AUTO_TRANSLATION_THREAD_ARROW = "→";
+
+export function isTranslationThreadName(
+  name: string | null | undefined,
+): boolean {
+  if (!name) return false;
+  return (
+    name.startsWith(MANUAL_TRANSLATION_THREAD_PREFIX) ||
+    name.includes(AUTO_TRANSLATION_THREAD_ARROW)
+  );
+}
 
 export interface IndexedMessage {
   discordMessageId: string;
@@ -235,6 +257,7 @@ export class BotAgent {
           content: "_No additional languages to translate to._",
           allowedMentions: NO_MENTIONS,
         });
+        this.scheduleThreadCleanup(thread, null);
       } catch (err) {
         logger.error(
           { err, messageId: message.id, channelId: message.channelId },
@@ -249,6 +272,7 @@ export class BotAgent {
       messageId: message.id,
       channelId: message.channelId,
     });
+    this.scheduleThreadCleanup(thread, null);
   }
 
   /**
@@ -459,14 +483,17 @@ export class BotAgent {
       if (fresh.archived) return false;
 
       if (!options.force) {
-        const messages = await fresh.messages.fetch({ limit: 50 });
-        const authors = messages.map((m) => ({
-          bot: m.author.bot,
-          id: m.author.id,
+        const messages = await fresh.messages.fetch({ limit: 100 });
+        const threadMessages = messages.map((m) => ({
+          id: m.id,
+          author: {
+            bot: m.author.bot,
+            id: m.author.id,
+          },
         }));
-        if (!shouldCleanupThread(authors, ourBotId)) {
+        if (!shouldCleanupThreadMessages(threadMessages, ourBotId, fresh.id)) {
           logger.debug(
-            { threadId: fresh.id, authors: authors.length },
+            { threadId: fresh.id, messages: threadMessages.length },
             "translation thread kept: human replies present",
           );
           return false;
@@ -512,6 +539,7 @@ export class BotAgent {
       const active = await channel.threads.fetchActive();
       for (const [, thread] of active.threads) {
         if (thread.ownerId !== ourBotId) continue;
+        if (!isTranslationThreadName(thread.name)) continue;
         const ok = await this.maybeArchiveThread(thread, ourBotId, {
           force: options.force,
           reason: options.force
@@ -524,6 +552,93 @@ export class BotAgent {
     } catch (err) {
       logger.warn({ err, channelId: channel.id }, "archive-bot-threads failed");
     }
+    return { archived, kept };
+  }
+
+  async archiveBotThreadsInGuild(
+    guild: Guild,
+    options: { force?: boolean } = {},
+  ): Promise<{ archived: number; kept: number }> {
+    const ourBotId = guild.client.user?.id;
+    if (!ourBotId) return { archived: 0, kept: 0 };
+
+    let archived = 0;
+    let kept = 0;
+    try {
+      const active = await guild.channels.fetchActiveThreads();
+      for (const [, thread] of active.threads) {
+        if (thread.ownerId !== ourBotId) continue;
+        if (!isTranslationThreadName(thread.name)) continue;
+        const ok = await this.maybeArchiveThread(thread, ourBotId, {
+          force: options.force,
+          reason: options.force
+            ? "Manual server archive via /archive-translations"
+            : "Manual server archive (kept threads with replies)",
+        });
+        if (ok) archived++;
+        else kept++;
+      }
+    } catch (err) {
+      logger.warn(
+        { err, guildId: guild.id },
+        "archive-bot-guild-threads failed",
+      );
+    }
+    return { archived, kept };
+  }
+
+  async sweepStaleTranslationThreadsInGuild(
+    guild: Guild,
+  ): Promise<{ archived: number; kept: number }> {
+    const ourBotId = guild.client.user?.id;
+    if (!ourBotId) return { archived: 0, kept: 0 };
+
+    const cleanupByChannelId = new Map<string, number>();
+    const now = Date.now();
+    let archived = 0;
+    let kept = 0;
+
+    try {
+      const active = await guild.channels.fetchActiveThreads();
+      for (const [, thread] of active.threads) {
+        if (thread.ownerId !== ourBotId) continue;
+        if (!isTranslationThreadName(thread.name)) continue;
+
+        const configChannelId = thread.parentId ?? thread.id;
+        if (!cleanupByChannelId.has(configChannelId)) {
+          const setting = await channels.getEffectiveAutoTranslate({
+            channelId: configChannelId,
+            guildId: guild.id,
+          });
+          cleanupByChannelId.set(
+            configChannelId,
+            effectiveCleanupMinutes(setting.cleanupMinutes),
+          );
+        }
+
+        const minutes = cleanupByChannelId.get(configChannelId) ?? 0;
+        if (minutes === 0) {
+          kept++;
+          continue;
+        }
+
+        const created = thread.createdTimestamp ?? 0;
+        if (now - created < minutes * 60_000) {
+          kept++;
+          continue;
+        }
+
+        const ok = await this.maybeArchiveThread(thread, ourBotId);
+        if (ok) archived++;
+        else kept++;
+      }
+    } catch (err) {
+      logger.debug(
+        { err, guildId: guild.id },
+        "guild stale thread sweep failed",
+      );
+    }
+
     return { archived, kept };
   }
 
@@ -545,7 +660,6 @@ export class BotAgent {
       channelId: message.channelId,
       guildId: message.guildId,
     });
-    if (!setting.autoTranslate) return;
     const minutes = effectiveCleanupMinutes(setting.cleanupMinutes);
     if (minutes === 0) return;
 
@@ -566,6 +680,7 @@ export class BotAgent {
       const active = await channel.threads.fetchActive();
       for (const [, thread] of active.threads) {
         if (thread.ownerId !== ourBotId) continue;
+        if (!isTranslationThreadName(thread.name)) continue;
         const created = thread.createdTimestamp ?? 0;
         if (now - created < cutoffMs) continue;
         await this.maybeArchiveThread(thread, ourBotId);

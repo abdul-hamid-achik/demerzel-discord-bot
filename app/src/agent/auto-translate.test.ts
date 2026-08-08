@@ -3,6 +3,7 @@ import { ChannelType } from "discord.js";
 import {
   autoTranslateConfigChannelId,
   autoTranslateDeliveryForChannelType,
+  isTranslationThreadName,
 } from "./agent.js";
 
 describe("auto-translate channel behavior", () => {
@@ -56,5 +57,12 @@ describe("auto-translate channel behavior", () => {
         type: ChannelType.GuildText,
       }),
     ).toBe("channel-1");
+  });
+
+  test("identifies Demerzel translation thread names", () => {
+    expect(isTranslationThreadName("🇮🇹 → 🇺🇸 🇪🇸 🇧🇷")).toBe(true);
+    expect(isTranslationThreadName("Translations · Hari")).toBe(true);
+    expect(isTranslationThreadName("Demerzel · Hari")).toBe(false);
+    expect(isTranslationThreadName("Demerzel - Welcome Hari")).toBe(false);
   });
 });

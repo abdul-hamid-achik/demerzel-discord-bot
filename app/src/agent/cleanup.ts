@@ -8,6 +8,11 @@ export interface ThreadAuthor {
   id: string;
 }
 
+export interface ThreadMessageAuthor {
+  id: string;
+  author: ThreadAuthor;
+}
+
 export const DEFAULT_CLEANUP_MINUTES = 5;
 
 /**
@@ -21,6 +26,17 @@ export function shouldCleanupThread(
 ): boolean {
   if (authors.length === 0) return true;
   return authors.every((a) => a.bot && a.id === ourBotId);
+}
+
+export function shouldCleanupThreadMessages(
+  messages: ThreadMessageAuthor[],
+  ourBotId: string,
+  starterMessageId?: string | null,
+): boolean {
+  const replyAuthors = messages
+    .filter((message) => !starterMessageId || message.id !== starterMessageId)
+    .map((message) => message.author);
+  return shouldCleanupThread(replyAuthors, ourBotId);
 }
 
 /**

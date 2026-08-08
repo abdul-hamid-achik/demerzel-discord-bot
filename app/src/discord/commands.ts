@@ -20,6 +20,7 @@ const LANGUAGE_CHOICES = [
   { name: "日本語 (Japanese)", value: "ja" },
   { name: "한국어 (Korean)", value: "ko" },
   { name: "中文 (Chinese)", value: "zh" },
+  { name: "العربية (Arabic)", value: "ar" },
 ];
 
 export const slashCommands = [
@@ -82,6 +83,16 @@ export const slashCommands = [
       "Archive translation threads in this channel (preserves history)",
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption((opt) =>
+      opt
+        .setName("scope")
+        .setDescription("Where to archive translation threads")
+        .setRequired(false)
+        .addChoices(
+          { name: "Current channel", value: "channel" },
+          { name: "Entire server", value: "server" },
+        ),
+    )
     .addBooleanOption((opt) =>
       opt
         .setName("force")

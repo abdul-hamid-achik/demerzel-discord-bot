@@ -16,6 +16,11 @@ const optionalUrl = z.preprocess(
   z.string().url().optional(),
 );
 
+const onboardingAccessScope = z.preprocess(
+  emptyStringToUndefined,
+  z.enum(["all_text", "configured"]).default("all_text"),
+);
+
 export const schema = z.object({
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_CLIENT_ID: z.string().min(1),
@@ -30,6 +35,12 @@ export const schema = z.object({
   TAVILY_API_KEY: optionalString,
   REDIS_URL: optionalString,
   DEMERZEL_ANNOUNCEMENT_CHANNEL_ID: optionalString,
+  DEMERZEL_WELCOME_CHANNEL_ID: optionalString,
+  DEMERZEL_ONBOARDING_ACCESS_SCOPE: onboardingAccessScope,
+  DEMERZEL_ONBOARDING_CHANNEL_IDS: optionalString,
+  DEMERZEL_ONBOARDING_CATEGORY_ID: optionalString,
+  DEMERZEL_ONBOARDING_EXCLUDED_CHANNEL_IDS: optionalString,
+  DEMERZEL_ONBOARDING_EXCLUDED_CATEGORY_IDS: optionalString,
   DEMERZEL_RELEASE_ID: optionalString,
   DEMERZEL_RELEASE_NOTES: optionalString,
   DEMERZEL_RELEASE_NOTES_FILE: optionalString,

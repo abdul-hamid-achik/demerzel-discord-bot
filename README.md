@@ -60,10 +60,11 @@ pulumi up
 
 1. Create an application at https://discord.com/developers/applications.
 2. Under **Bot**, create a bot user; copy the token → `DISCORD_TOKEN`.
-3. Enable **Message Content Intent** (required).
+3. Enable **Message Content Intent** and **Server Members Intent** (required).
 4. Under **OAuth2 → URL Generator**, select `bot` + `applications.commands`
    scopes, and the permissions: Send Messages, Read Message History,
-   Create Public Threads, Send Messages in Threads, Embed Links, Add Reactions.
+   Create Public Threads, Send Messages in Threads, Embed Links, Add Reactions,
+   Manage Roles.
 5. Copy the **Application ID** → `DISCORD_CLIENT_ID`.
 6. Open the generated URL to invite the bot to your guild.
 
@@ -85,6 +86,24 @@ VOID_API_KEY=<same value as BOT_API_KEY in the StarWarrior Void project>
 `DATABASE_URL` is Demerzel's own Neon/Postgres database for translation state,
 preferences, and reminders. It is not the StarWarrior CMS database. CMS writes go
 through the Void API with the bearer key above.
+
+New-member welcomes are enabled by default. Enable **Server Members Intent** in
+the Discord Developer Portal so Discord sends join events; if the portal setting
+is missing, Demerzel starts without the member intent and logs the configuration
+issue. In that fallback mode, Demerzel can still welcome from Discord native
+join system messages if the server has a **System Messages Channel** with join
+messages enabled.
+
+For channel access, Demerzel grants joining users explicit access to all text
+and announcement channels by default. Set
+`DEMERZEL_ONBOARDING_EXCLUDED_CHANNEL_IDS` or
+`DEMERZEL_ONBOARDING_EXCLUDED_CATEGORY_IDS` to protect admin/private areas.
+Set `DEMERZEL_ONBOARDING_ACCESS_SCOPE=configured` to restore the older
+allowlist behavior using `DEMERZEL_ONBOARDING_CHANNEL_IDS`,
+`DEMERZEL_ONBOARDING_CATEGORY_ID`, or the default `Canali testuali` / `Text
+Channels` category. Longer term, prefer a normal member role plus category
+permissions because role-based access is easier to audit than per-member channel
+overwrites.
 
 ## 5. Register slash commands
 
@@ -108,7 +127,16 @@ task deploy
 ```
 
 This rsyncs `app/` to `/opt/demerzel/app` on the droplet and runs
-`docker compose up -d --build`. Tail logs with:
+`docker compose up -d --build`. Demerzel announces a deploy in the configured
+announcement/home channel only when `app/RELEASE_NOTES.md` changes, when
+`app/package.json` version changes, or when `DEMERZEL_RELEASE_ID` is set to a
+new value. Update the package version and release notes before deploying
+user-visible changes; otherwise the startup log will say the release
+announcement was already sent or the Discord message will keep showing the old
+version. Keep `app/RELEASE_NOTES.md` current-release-only because Demerzel posts
+the whole file verbatim.
+
+Tail logs with:
 
 ```bash
 task remote:logs
@@ -145,11 +173,17 @@ When `TAVILY_API_KEY` is set, Demerzel can also search live web results before
 scheduling. Example:
 
 ```text
-@Demerzel search when the next Foundation Galactic Empire event is, then remind this channel one hour before with the link.
+@Demerzel search when the next Foundation: Galactic Frontier event is, then remind this channel one hour before with the link.
 ```
 
 Channel reminders are posted without allowed mentions, so generated text cannot
 accidentally ping roles, users, or `@everyone`.
+
+The scheduler loads the next due reminder and uses a one-shot timer. Successful
+create and cancel operations reschedule it in-process, while a six-hour
+reconciliation repairs out-of-band changes and abandoned delivery leases after
+restarts. This lets an idle Neon compute reach its scale-to-zero window instead
+of being kept awake by short-interval polling.
 
 ## Swapping translation provider
 
@@ -171,7 +205,12 @@ cost.
 - The bot only indexes messages when a feature needs it, instead of running
   language detection for every message in every channel.
 - Reminders are claimed from the database before delivery, which avoids obvious
-  duplicate sends if more than one bot process is running.
+  duplicate sends if more than one bot process is running. Delivery is
+  intentionally at-least-once if the process dies after Discord accepts a
+  message but before the sent status is persisted.
+- Background reminder and translation-thread recovery are aligned on a
+  six-hour cadence. Normal reminder creation and per-thread cleanup remain
+  event-driven.
 - The `BotAgent` class is the orchestration seam — Discord handlers call it,
   it owns the translation/cache/analytics flow. Future work such as a web
   overlay or summaries plugs in here without touching handlers.
@@ -179,7 +218,9 @@ cost.
 ## Costs
 
 - Droplet `s-1vcpu-2gb`: ~$12/month
-- NeonDB: free tier sufficient for early use
+- NeonDB: use the smallest compute that fits the workload, keep scale-to-zero
+  enabled, and avoid background polling more frequent than the suspension
+  window
 - OpenAI API: defaults to `gpt-5.4-nano`; cache hits are free for translations
 
 ## Tearing it down
